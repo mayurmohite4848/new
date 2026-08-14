@@ -165,102 +165,111 @@ def expand_abbreviations_and_shortforms(text):
     return "".join(result)
 
 CANDIDATE_GEMINI_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-2.5-pro",
-    "gemini-1.5-pro"
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-pro-preview"
 ]
 
 def transcribe_with_gemini(image_path, api_key=None):
     """
-    Transcribes handwritten text from image using Gemini Flash Vision.
-    Tries active model versions with both SDK and Direct REST fallback.
+    Transcribes handwritten text from image into 1 complete structured plain text note
+    using the Gemini Interactions API (gemini-3.6-flash / 3.5-flash).
     """
     key = (api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
     if not key:
         print("[OCR] No Gemini API key provided. Using local PyTorch engine.")
         return None
 
-    print(f"[OCR] Transcribing with Gemini Vision API (Key prefix: {key[:6]}...)...")
+    print(f"[OCR] Transcribing full page with Gemini Interactions API (Key prefix: {key[:6]}...)...")
 
     prompt = (
         "You are an expert handwriting transcription assistant.\n"
-        "Carefully transcribe all handwritten and printed English text from this notebook/document image into clear, accurate plain text.\n"
+        "Carefully transcribe all handwritten and printed English text from this notebook/document page into ONE complete, well-organized plain text note.\n"
         "Rules:\n"
         "1. Accurately decipher cursive, messy handwriting, notes, and abbreviations.\n"
-        "2. Preserve the logical structure, headings, bullet points, and numbered lists.\n"
-        "3. Expand handwritten shorthand (e.g. w/, b/c, mgmt, reqs, arch, db) into clear words.\n"
-        "4. Return ONLY the transcribed plain text notes without conversational preamble or conversational ending."
+        "2. Keep the entire page together in one single note.\n"
+        "3. Put the main topic/heading on the very first line (e.g. # Exploratory Data Analysis).\n"
+        "4. Preserve all sections, bullet points, sub-points, and definitions in structured plain text.\n"
+        "5. Expand handwritten shorthand (e.g. w/, b/c, mgmt, reqs, arch, db) into clear words.\n"
+        "6. Return ONLY the transcribed plain text note without conversational preamble or conversational ending."
     )
 
     with open(image_path, "rb") as f:
         image_bytes = f.read()
 
+    b64_image = base64.b64encode(image_bytes).decode('utf-8')
     ext = os.path.splitext(image_path)[1].lower().replace('.', '')
     mime_type = "image/jpeg" if ext in ("jpg", "jpeg") else (f"image/{ext}" if ext else "image/jpeg")
 
-    # Method 1: Google GenAI SDK
+    # Method 1: Google GenAI SDK Interactions API
     for model_name in CANDIDATE_GEMINI_MODELS:
         try:
             from google import genai
-            from google.genai import types
 
             client = genai.Client(api_key=key)
-            response = client.models.generate_content(
+            interaction = client.interactions.create(
                 model=model_name,
-                contents=[
-                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                    prompt
+                input=[
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image",
+                        "data": b64_image,
+                        "mime_type": mime_type
+                    }
                 ]
             )
-            if response and response.text:
-                print(f"[OCR] Successfully transcribed with GenAI SDK ({model_name})!")
-                return response.text.strip()
+            if interaction and interaction.output_text:
+                print(f"[OCR] Successfully transcribed with GenAI Interactions API ({model_name})!")
+                return interaction.output_text.strip()
         except Exception as e:
-            print(f"[OCR] GenAI SDK ({model_name}) attempt: {e}")
+            print(f"[OCR] GenAI Interactions ({model_name}) attempt: {e}")
 
-    # Method 2: Direct Google AI Studio REST Endpoint
-    b64_data = base64.b64encode(image_bytes).decode('utf-8')
+    # Method 2: Direct Google AI Studio Interactions REST Endpoint
     for model_name in CANDIDATE_GEMINI_MODELS:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+            url = "https://generativelanguage.googleapis.com/v1beta/interactions"
             payload = {
-                "contents": [
+                "model": model_name,
+                "input": [
+                    {"type": "text", "text": prompt},
                     {
-                        "parts": [
-                            {
-                                "inline_data": {
-                                    "mime_type": mime_type,
-                                    "data": b64_data
-                                }
-                            },
-                            {
-                                "text": prompt
-                            }
-                        ]
+                        "type": "image",
+                        "data": b64_image,
+                        "mime_type": mime_type
                     }
                 ]
             }
             req = urllib.request.Request(
                 url,
                 data=json.dumps(payload).encode('utf-8'),
-                headers={"Content-Type": "application/json"}
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": key,
+                    "Api-Revision": "2026-05-20"
+                }
             )
             with urllib.request.urlopen(req, timeout=30) as resp:
                 data = json.loads(resp.read().decode('utf-8'))
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts and "text" in parts[0]:
-                        transcribed = parts[0]["text"].strip()
-                        print(f"[OCR] Successfully transcribed via direct REST ({model_name})!")
-                        return transcribed
+                steps = data.get("steps", [])
+                output_texts = []
+                for step in steps:
+                    if step.get("type") == "model_output":
+                        for c in step.get("content", []):
+                            if c.get("type") == "text" and "text" in c:
+                                output_texts.append(c["text"])
+                if output_texts:
+                    transcribed = "\n".join(output_texts).strip()
+                    print(f"[OCR] Successfully transcribed via direct Interactions REST ({model_name})!")
+                    return transcribed
+                if "output_text" in data and data["output_text"]:
+                    print(f"[OCR] Successfully transcribed via direct Interactions REST ({model_name})!")
+                    return data["output_text"].strip()
         except urllib.error.HTTPError as http_err:
             err_body = http_err.read().decode('utf-8', errors='ignore')
-            print(f"[OCR] REST {model_name} HTTP {http_err.code}: {err_body}")
+            print(f"[OCR] Interactions REST {model_name} HTTP {http_err.code}: {err_body}")
         except Exception as rest_err:
-            print(f"[OCR] REST {model_name} error: {rest_err}")
+            print(f"[OCR] Interactions REST {model_name} error: {rest_err}")
 
     print("[OCR] All Gemini transcription attempts failed. Falling back to local PyTorch OCR.")
     return None
@@ -301,7 +310,8 @@ def extract_handwriting_text(image_path, api_key=None):
 
 def segment_text_into_notes(extracted_text, original_filename="", metadata=None):
     """
-    Analyzes plain text and segments it into multiple distinct, structured notes.
+    Keeps everything from one image in ONE single complete note.
+    Extracts the main title from the first heading line while preserving all content.
     """
     text = (extracted_text or "").strip()
     clean_base = os.path.splitext(original_filename)[0].replace('_', ' ').replace('-', ' ').title() if original_filename else "Extracted Note"
@@ -314,56 +324,36 @@ def segment_text_into_notes(extracted_text, original_filename="", metadata=None)
             "segment_index": 0
         }]
 
-    raw_blocks = re.split(r'\n\s*\n+', text)
-    section_patterns = re.findall(r'(?:^|\n)(?:#+\s*|[0-9]+[\.\)]\s*|[A-Z][A-Za-z\s]{2,30}:)', text)
+    # Extract first line as title candidate
+    lines = [l.strip() for l in text.split('\n') if l.strip()]
+    first_line = lines[0] if lines else clean_base
+    title_candidate = re.sub(r'^[#0-9\.\-\*\:\s]+', '', first_line).strip()
+    
+    # If first line has a colon, take before colon or clean title
+    if ":" in title_candidate and len(title_candidate.split(":")[0]) > 4:
+        title_candidate = title_candidate.split(":")[0].strip()
 
-    notes = []
+    if len(title_candidate) > 50:
+        title_candidate = title_candidate[:47] + "..."
 
-    if len(raw_blocks) > 1 and (len(section_patterns) >= 2 or len(raw_blocks) >= 2):
-        for idx, block in enumerate(raw_blocks):
-            block_clean = block.strip()
-            if not block_clean or len(block_clean) < 5:
-                continue
+    final_title = title_candidate.title() if title_candidate else clean_base
 
-            lines = [l.strip() for l in block_clean.split('\n') if l.strip()]
-            first_line = lines[0] if lines else f"Topic {idx + 1}"
+    # Generate smart tags based on text content
+    tags = ["notes"]
+    lower_text = text.lower()
+    if any(k in lower_text for k in ["statistic", "data", "analysis", "parameter", "sample", "inferential", "descriptive"]):
+        tags.append("statistics")
+    if any(k in lower_text for k in ["action", "todo", "task", "assign"]):
+        tags.append("action-items")
+    if any(k in lower_text for k in ["architecture", "database", "system", "design", "api"]):
+        tags.append("engineering")
+    if any(k in lower_text for k in ["summary", "key", "takeaway", "conclusion"]):
+        tags.append("summary")
 
-            candidate_title = re.sub(r'^[#0-9\.\-\*\:\s]+', '', first_line).strip()
-            if len(candidate_title) > 45:
-                candidate_title = candidate_title[:42] + "..."
-            if not candidate_title:
-                candidate_title = f"{clean_base} - Part {idx + 1}"
-
-            content_body = "\n".join(lines[1:]) if len(lines) > 1 else lines[0]
-
-            tags = ["notes"]
-            lower_b = block_clean.lower()
-            if any(k in lower_b for k in ["action", "todo", "task", "assign"]):
-                tags.append("action-items")
-            elif any(k in lower_b for k in ["architecture", "system", "design", "database", "api", "statistics"]):
-                tags.append("statistics")
-            elif any(k in lower_b for k in ["summary", "key", "takeaway", "conclusion"]):
-                tags.append("summary")
-
-            notes.append({
-                "title": candidate_title.title(),
-                "content": content_body or block_clean,
-                "tags": list(set(tags)),
-                "segment_index": idx
-            })
-
-    if not notes:
-        lines = [l.strip() for l in text.split('\n') if l.strip()]
-        first_line = lines[0] if lines else clean_base
-        first_title = re.sub(r'^[#0-9\.\-\*\:\s]+', '', first_line).strip()
-        if len(first_title) > 40:
-            first_title = first_title[:38] + "..."
-
-        notes.append({
-            "title": first_title.title() if first_title else clean_base,
-            "content": text,
-            "tags": ["notes"],
-            "segment_index": 0
-        })
-
-    return notes
+    # Return ONE single complete note for the whole page
+    return [{
+        "title": final_title,
+        "content": text,
+        "tags": list(set(tags)),
+        "segment_index": 0
+    }]

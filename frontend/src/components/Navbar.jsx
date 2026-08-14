@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Sparkles, Key, FileText, Check, X, RefreshCw } from 'lucide-react';
+import { Sparkles, Key, FileText, Check, X, RefreshCw, AlertCircle, Loader2 } from 'lucide-react';
+import { api } from '../services/api';
 
 export default function Navbar({ 
   onNewNote, 
@@ -14,6 +15,8 @@ export default function Navbar({
 }) {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
+  const [verifying, setVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState(null); // { valid: bool, message: string }
 
   const handleOpenNote = () => {
     if (onNewNote) onNewNote();
@@ -23,6 +26,24 @@ export default function Navbar({
   const handleOpenUpload = () => {
     if (onNewUpload) onNewUpload();
     else if (onOpenUpload) onOpenUpload();
+  };
+
+  const handleTestKey = async () => {
+    const trimmed = apiKey.trim();
+    if (!trimmed) {
+      setVerifyResult({ valid: false, message: 'Please enter an API key to test.' });
+      return;
+    }
+    setVerifying(true);
+    setVerifyResult(null);
+    try {
+      const res = await api.verifyKey(trimmed);
+      setVerifyResult({ valid: true, message: res.message || 'Key is valid and active!' });
+    } catch (err) {
+      setVerifyResult({ valid: false, message: err.message || 'Verification failed. Please check your key.' });
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const handleSaveKey = () => {
@@ -100,7 +121,10 @@ export default function Navbar({
 
           <button 
             className="btn btn-secondary btn-sm"
-            onClick={() => setShowKeyModal(true)}
+            onClick={() => {
+              setVerifyResult(null);
+              setShowKeyModal(true);
+            }}
             style={{ borderColor: hasKey ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)' }}
           >
             <Key size={14} color={hasKey ? '#34d399' : 'currentColor'} />
@@ -129,11 +153,11 @@ export default function Navbar({
       {/* Free Gemini Key Modal */}
       {showKeyModal && (
         <div className="modal-backdrop" onClick={() => setShowKeyModal(false)}>
-          <div className="modal-content" style={{ maxWidth: '480px', padding: '24px' }} onClick={e => e.stopPropagation()}>
+          <div className="modal-content" style={{ maxWidth: '520px', padding: '24px' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <Key size={20} color="var(--accent-primary)" />
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Free Gemini API Key</h3>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Google Gemini API Key (100% Free)</h3>
               </div>
               <button className="btn btn-ghost btn-icon" onClick={() => setShowKeyModal(false)}>
                 <X size={18} />
@@ -141,22 +165,54 @@ export default function Navbar({
             </div>
 
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '16px' }}>
-              Gemini Flash provides <strong>$0 free handwriting transcription</strong> that deciphers cursive handwriting into clean English plain text with 0 gibberish.
+              Gemini Vision accurately reads human cursive handwriting and converts it directly into clear English plain text notes.
             </p>
 
             <div style={{ marginBottom: '16px' }}>
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-main)' }}>
                 Gemini API Key:
               </label>
-              <input
-                type="password"
-                className="input"
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                placeholder="AIzaSy..."
-              />
-              <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '6px' }}>
-                Get a free key in 10 seconds at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-secondary)' }}>Google AI Studio</a>. Saved locally in your browser.
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  type="password"
+                  className="input"
+                  value={apiKey}
+                  onChange={e => {
+                    setApiKey(e.target.value);
+                    setVerifyResult(null);
+                  }}
+                  placeholder="AIzaSy..."
+                  style={{ flex: 1 }}
+                />
+                <button 
+                  className="btn btn-secondary btn-sm" 
+                  onClick={handleTestKey}
+                  disabled={verifying || !apiKey.trim()}
+                >
+                  {verifying ? <Loader2 size={14} className="animate-spin" /> : 'Test Key'}
+                </button>
+              </div>
+              
+              {verifyResult && (
+                <div style={{
+                  marginTop: '10px',
+                  padding: '10px 14px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.82rem',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  background: verifyResult.valid ? 'rgba(16, 185, 129, 0.12)' : 'rgba(244, 63, 94, 0.12)',
+                  color: verifyResult.valid ? '#34d399' : '#fb7185',
+                  border: `1px solid ${verifyResult.valid ? 'rgba(16, 185, 129, 0.3)' : 'rgba(244, 63, 94, 0.3)'}`
+                }}>
+                  {verifyResult.valid ? <Check size={16} style={{ flexShrink: 0, marginTop: '2px' }} /> : <AlertCircle size={16} style={{ flexShrink: 0, marginTop: '2px' }} />}
+                  <span>{verifyResult.message}</span>
+                </div>
+              )}
+
+              <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '8px' }}>
+                Don't have a key? Get one for free at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-secondary)', textDecoration: 'underline' }}>Google AI Studio</a>.
               </span>
             </div>
 

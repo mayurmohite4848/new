@@ -4,7 +4,9 @@ import {
   Sparkles, 
   X, 
   FileText,
-  Key
+  Key,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
 import MultiNoteSplitReview from './MultiNoteSplitReview';
 import { api } from '../services/api';
@@ -119,43 +121,73 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: '20px'
+        marginBottom: '16px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: '34px',
-            height: '34px',
-            borderRadius: '10px',
-            background: 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%)',
+            width: '32px',
+            height: '32px',
+            borderRadius: '8px',
+            background: 'rgba(99, 102, 241, 0.2)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            color: '#818cf8'
           }}>
-            <FileText size={18} color="#ffffff" />
+            <Sparkles size={18} />
           </div>
           <div>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-main)' }}>
-              Transcribe Photo into Plain Text Notes
-            </h2>
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Upload handwritten pages, whiteboards, or documents to transcribe into clean plain text notes.
+            <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-main)' }}>
+              Transcribe Handwritten Notes to Plain Text
+            </h3>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Upload your notebook or paper photo — original picture is saved untouched
             </p>
           </div>
         </div>
 
         {onClose && (
           <button 
-            className="btn btn-ghost btn-icon" 
+            className="btn btn-ghost btn-icon"
             onClick={onClose}
-            title="Close Uploader"
+            title="Close"
           >
             <X size={18} />
           </button>
         )}
       </div>
 
-      {/* Upload Dropzone */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+      {/* API Key Status Indicator */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '8px 14px',
+        borderRadius: 'var(--radius-sm)',
+        background: hasApiKey ? 'rgba(16, 185, 129, 0.08)' : 'rgba(245, 158, 11, 0.08)',
+        border: `1px solid ${hasApiKey ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}`,
+        marginBottom: '16px',
+        fontSize: '0.82rem'
+      }}>
+        {hasApiKey ? (
+          <>
+            <CheckCircle size={15} color="#34d399" />
+            <span style={{ color: '#a7f3d0' }}>
+              <strong>Gemini Flash Vision Active:</strong> High-precision handwriting recognition ready.
+            </span>
+          </>
+        ) : (
+          <>
+            <AlertCircle size={15} color="#f59e0b" />
+            <span style={{ color: '#fde68a' }}>
+              <strong>No Gemini Key Set:</strong> Using offline local OCR (may misread cursive). Click <strong>"Set Free Gemini Key"</strong> in the top navbar for 100% handwriting accuracy.
+            </span>
+          </>
+        )}
+      </div>
+
+      {/* Drop Zone Area */}
+      {!selectedFile ? (
         <div
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -163,102 +195,105 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
           style={{
-            border: `2px dashed ${dragActive ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.15)'}`,
+            border: `2px dashed ${dragActive ? 'var(--accent-primary)' : 'var(--border-subtle)'}`,
             borderRadius: 'var(--radius-lg)',
-            padding: '36px 20px',
+            padding: '40px 20px',
             textAlign: 'center',
             cursor: 'pointer',
-            background: dragActive ? 'rgba(99, 102, 241, 0.1)' : 'rgba(15, 23, 42, 0.5)',
+            background: dragActive ? 'rgba(99, 102, 241, 0.08)' : 'rgba(15, 23, 42, 0.4)',
             transition: 'all 0.2s ease',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
+            justifyContent: 'center',
             gap: '12px'
           }}
         >
-          <input 
+          <input
             ref={fileInputRef}
-            type="file" 
-            accept="image/*" 
-            style={{ display: 'none' }} 
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
             onChange={handleFileChange}
           />
-
-          {previewUrl ? (
-            <div style={{ position: 'relative', maxWidth: '300px', maxHeight: '200px' }}>
-              <img 
-                src={previewUrl} 
-                alt="Selected Preview" 
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '180px',
-                  borderRadius: '8px',
-                  objectFit: 'contain',
-                  boxShadow: 'var(--shadow-sm)'
-                }}
-              />
-              <div style={{
-                marginTop: '8px',
-                fontSize: '0.85rem',
-                color: 'var(--text-muted)',
-                fontWeight: 500
-              }}>
-                {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+          <div style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '50%',
+            background: 'rgba(99, 102, 241, 0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#818cf8'
+          }}>
+            <UploadCloud size={24} />
+          </div>
+          <div>
+            <p style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-main)' }}>
+              Drop your notebook photo here, or <span style={{ color: 'var(--accent-secondary)' }}>browse</span>
+            </p>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+              Supports PNG, JPG, JPEG, WEBP (up to 25MB)
+            </p>
+          </div>
+        </div>
+      ) : (
+        /* Selected File Preview */
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '16px',
+          background: 'rgba(15, 23, 42, 0.6)',
+          padding: '16px',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border-subtle)'
+        }}>
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '14px',
+            flexWrap: 'wrap'
+          }}>
+            <img 
+              src={previewUrl} 
+              alt="Preview" 
+              style={{
+                width: '70px',
+                height: '70px',
+                objectFit: 'cover',
+                borderRadius: '8px',
+                border: '1px solid var(--border-subtle)'
+              }}
+            />
+            <div style={{ flex: 1, minWidth: '180px' }}>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                {selectedFile.name}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+                {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for plain text transcription
               </div>
             </div>
-          ) : (
-            <>
-              <div style={{
-                width: '56px',
-                height: '56px',
-                borderRadius: '16px',
-                background: 'rgba(99, 102, 241, 0.15)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#818cf8',
-                boxShadow: '0 0 15px rgba(99, 102, 241, 0.2)'
-              }}>
-                <UploadCloud size={28} />
-              </div>
-              <div>
-                <p style={{ fontSize: '0.98rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                  Drop handwritten photo or document here, or <span style={{ color: 'var(--accent-primary)' }}>browse</span>
-                </p>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-                  {hasApiKey ? '✨ Gemini Flash Vision active for high-accuracy plain text transcription' : 'Using local OCR engine (or set a free Gemini Key in top right for 99% accuracy)'}
-                </p>
-              </div>
-            </>
-          )}
-        </div>
 
-        {selectedFile && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
-            <button 
-              className="btn btn-secondary btn-sm"
-              onClick={resetState}
-              disabled={processing}
-            >
-              Clear
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={handleProcessImage}
-              disabled={processing}
-            >
-              {processing ? (
-                <span className="animate-pulse-subtle">Transcribing Handwriting into Plain Text...</span>
-              ) : (
-                <>
-                  <Sparkles size={16} />
-                  <span>Transcribe to Plain Text</span>
-                </>
-              )}
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                className="btn btn-secondary btn-sm" 
+                onClick={resetState}
+                disabled={processing}
+              >
+                Change Image
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleProcessImage}
+                disabled={processing}
+              >
+                <Sparkles size={16} />
+                <span>{processing ? 'Deciphering Handwriting...' : 'Transcribe to Plain Text'}</span>
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

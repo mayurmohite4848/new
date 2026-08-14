@@ -1,15 +1,13 @@
 import React, { useState } from 'react';
 import { 
   Sparkles, 
-  Layers, 
-  Plus, 
-  Trash2, 
   Save, 
   X, 
   Tag, 
   Image as ImageIcon,
   FileText,
-  Check
+  Check,
+  Edit3
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -19,107 +17,68 @@ export default function MultiNoteSplitReview({
   onCancel, 
   showToast 
 }) {
-  const initialSegments = (draftData?.segmented_notes && draftData.segmented_notes.length > 0)
-    ? draftData.segmented_notes.map((s, idx) => ({
-        id: `seg-${idx}-${Date.now()}`,
-        title: s.title || `Note Topic ${idx + 1}`,
-        content: s.content || '',
-        tags: s.tags || ['notes', 'extracted'],
-        segment_index: idx
-      }))
-    : [{
-        id: `seg-0-${Date.now()}`,
+  const initialNote = (draftData?.segmented_notes && draftData.segmented_notes.length > 0)
+    ? draftData.segmented_notes[0]
+    : {
         title: draftData?.title || 'Extracted Note',
-        content: draftData?.content || '',
+        content: draftData?.content || draftData?.extracted_text || '',
         tags: draftData?.tags || ['notes', 'extracted'],
         segment_index: 0
-      }];
+      };
 
-  const [notes, setNotes] = useState(initialSegments);
+  const [title, setTitle] = useState(initialNote.title || 'Untitled Note');
+  const [content, setContent] = useState(initialNote.content || draftData?.extracted_text || '');
+  const [tags, setTags] = useState(initialNote.tags || ['notes']);
+  const [tagInput, setTagInput] = useState('');
   const [saving, setSaving] = useState(false);
-  const [tagInputs, setTagInputs] = useState({});
+  const [activeView, setActiveView] = useState('split'); // 'split' | 'note' | 'photo'
 
   const imageUrl = draftData?.image_url;
 
-  const handleUpdateNote = (id, field, value) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, [field]: value } : n));
-  };
-
-  const handleAddTag = (id, tagValue) => {
-    const val = tagValue.trim().replace(/^#/, '').toLowerCase();
-    if (!val) return;
-    setNotes(prev => prev.map(n => {
-      if (n.id === id) {
-        const currentTags = n.tags || [];
-        if (!currentTags.includes(val)) {
-          return { ...n, tags: [...currentTags, val] };
-        }
+  const handleAddTag = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const val = tagInput.trim().replace(/^#/, '').toLowerCase();
+      if (val && !tags.includes(val)) {
+        setTags([...tags, val]);
       }
-      return n;
-    }));
-    setTagInputs(prev => ({ ...prev, [id]: '' }));
-  };
-
-  const handleRemoveTag = (id, tagToRemove) => {
-    setNotes(prev => prev.map(n => {
-      if (n.id === id) {
-        return { ...n, tags: (n.tags || []).filter(t => t !== tagToRemove) };
-      }
-      return n;
-    }));
-  };
-
-  const handleRemoveSegment = (id) => {
-    if (notes.length <= 1) {
-      showToast('You must keep at least one note.', 'error');
-      return;
+      setTagInput('');
     }
-    setNotes(prev => prev.filter(n => n.id !== id));
   };
 
-  const handleAddNewSegment = () => {
-    const newNote = {
-      id: `seg-custom-${Date.now()}`,
-      title: `Additional Topic ${notes.length + 1}`,
-      content: '',
-      tags: ['notes', 'custom'],
-      segment_index: notes.length
-    };
-    setNotes([...notes, newNote]);
+  const handleRemoveTag = (tagToRemove) => {
+    setTags(tags.filter(t => t !== tagToRemove));
   };
 
-  const handleSaveAll = async () => {
-    if (notes.length === 0) return;
-
-    const emptyTitle = notes.find(n => !n.title.trim());
-    if (emptyTitle) {
-      showToast('All notes must have a title.', 'error');
+  const handleSaveNote = async () => {
+    if (!title.trim()) {
+      showToast('Please provide a title for the note.', 'error');
       return;
     }
 
     setSaving(true);
     try {
-      const payloadNotes = notes.map((n, idx) => ({
-        title: n.title.trim(),
-        content: n.content.trim(),
-        extracted_text: n.content.trim(),
-        image_filename: draftData.image_filename,
-        image_path: draftData.image_url,
-        image_metadata: draftData.image_metadata,
-        ai_insights: draftData.ai_insights,
-        tags: n.tags,
-        source_image_filename: draftData.image_filename,
-        segment_index: idx,
+      const payload = {
+        title: title.trim(),
+        content: content.trim(),
+        extracted_text: draftData?.extracted_text || content.trim(),
+        image_filename: draftData?.image_filename,
+        image_path: imageUrl,
+        image_metadata: draftData?.image_metadata,
+        ai_insights: draftData?.ai_insights,
+        source_image_filename: draftData?.image_filename,
+        segment_index: 0,
+        tags: tags,
         is_favorite: false
-      }));
+      };
 
-      const res = await api.batchCreateNotes(payloadNotes);
-      showToast(`Created ${res.count || payloadNotes.length} plain text notes in SQLite!`, 'success');
+      const res = await api.createNote(payload);
+      showToast('Note successfully saved to SQLite!', 'success');
       if (onNotesCreated) {
-        onNotesCreated(res.notes || []);
+        onNotesCreated([res.note]);
       }
     } catch (err) {
-      showToast(err.message || 'Failed to save notes.', 'error');
+      showToast(err.message || 'Failed to save note.', 'error');
     } finally {
       setSaving(false);
     }
@@ -130,17 +89,18 @@ export default function MultiNoteSplitReview({
       padding: '24px',
       marginBottom: '32px',
       border: '1px solid var(--border-accent)',
-      boxShadow: 'var(--shadow-lg)'
+      boxShadow: 'var(--shadow-lg)',
+      animation: 'fadeIn 0.25s ease'
     }}>
-      {/* Header Banner */}
+      {/* Top Banner */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
         gap: '12px',
+        paddingBottom: '18px',
         borderBottom: '1px solid var(--border-subtle)',
-        paddingBottom: '16px',
         marginBottom: '20px'
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -148,210 +108,174 @@ export default function MultiNoteSplitReview({
             width: '36px',
             height: '36px',
             borderRadius: '10px',
-            background: 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%)',
+            background: 'rgba(99, 102, 241, 0.2)',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center'
+            justifyContent: 'center',
+            color: '#818cf8'
           }}>
-            <FileText size={18} color="#ffffff" />
+            <FileText size={20} />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                Review Extracted Plain Text Notes ({notes.length} Topics)
-              </h2>
-            </div>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Review the transcribed plain text notes below, edit titles or content, and save to SQLite.
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: 'var(--text-main)' }}>
+              Review Digitized Note (1 Complete Note)
+            </h2>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+              Full page transcribed into a single note. Review, adjust, or save directly.
             </p>
           </div>
         </div>
 
+        {/* View Switchers & Action Buttons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button className="btn btn-secondary btn-sm" onClick={onCancel} disabled={saving}>
+          <button 
+            type="button" 
+            className="btn btn-secondary btn-sm" 
+            onClick={onCancel}
+            disabled={saving}
+          >
             Cancel
           </button>
-          <button className="btn btn-primary" onClick={handleSaveAll} disabled={saving}>
-            {saving ? 'Creating Notes...' : (
-              <>
-                <Save size={16} />
-                <span>Save All ({notes.length}) Notes</span>
-              </>
-            )}
+          
+          <button 
+            type="button" 
+            className="btn btn-primary" 
+            onClick={handleSaveNote}
+            disabled={saving}
+          >
+            <Save size={16} />
+            <span>{saving ? 'Saving Note...' : 'Save Note to Database'}</span>
           </button>
         </div>
       </div>
 
-      {/* Main Layout: Left Photo vs Right Notes */}
+      {/* Main Content Layout: Side-by-Side Review */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'minmax(260px, 340px) 1fr',
+        gridTemplateColumns: imageUrl ? '1.1fr 0.9fr' : '1fr',
         gap: '24px',
         alignItems: 'start'
       }}>
-        {/* Left Column: Untouched Original Image */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', position: 'sticky', top: '20px' }}>
-          <div style={{
-            borderRadius: 'var(--radius-md)',
-            overflow: 'hidden',
-            background: '#040711',
-            border: '1px solid var(--border-subtle)',
-            maxHeight: '340px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '8px',
-            boxShadow: 'var(--shadow-sm)'
-          }}>
-            <img
-              src={imageUrl}
-              alt="Original Upload"
-              style={{ maxWidth: '100%', maxHeight: '310px', objectFit: 'contain', borderRadius: '4px' }}
+        {/* Left Side: Plain Text Note Editor */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
+              Note Title:
+            </label>
+            <input
+              type="text"
+              className="input"
+              style={{ fontSize: '1.1rem', fontWeight: 700 }}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Exploratory Data Analysis"
             />
           </div>
-          <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textAlign: 'center' }}>
-            Original Untouched Photo ({draftData?.original_name || 'Upload'})
-          </span>
 
-          {/* Minimal AI Insights Pill */}
-          {draftData?.ai_insights && (
-            <div className="ai-summary-card">
-              <div style={{ fontWeight: 700, marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px', color: '#c7d2fe' }}>
-                <Sparkles size={14} />
-                <span>Summary: {draftData.ai_insights.core_concept || 'Extracted Topics'}</span>
-              </div>
-              <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {(draftData.ai_insights.key_takeaways || []).map((pt, i) => (
-                  <li key={i}>{pt}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </div>
-
-        {/* Right Column: Plain Text Note Drafts */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {notes.map((seg, idx) => (
-            <div
-              key={seg.id}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
+              Transcribed Plain-Text Note Content:
+            </label>
+            <textarea
+              className="textarea"
               style={{
-                background: 'rgba(15, 23, 42, 0.75)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 'var(--radius-md)',
-                padding: '16px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px'
+                minHeight: '360px',
+                fontFamily: 'var(--font-sans)',
+                fontSize: '0.92rem',
+                lineHeight: '1.7',
+                padding: '16px'
               }}
-            >
-              {/* Note Header */}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
-                  <span style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '6px',
-                    background: 'rgba(99, 102, 241, 0.2)',
-                    color: '#a5b4fc',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '0.75rem',
-                    fontWeight: 700
-                  }}>
-                    {idx + 1}
-                  </span>
-                  <input
-                    type="text"
-                    className="input"
-                    value={seg.title}
-                    onChange={(e) => handleUpdateNote(seg.id, 'title', e.target.value)}
-                    style={{ fontWeight: 700, fontSize: '0.98rem', padding: '6px 10px' }}
-                    placeholder="Note Title..."
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Transcribed plain text content..."
+            />
+          </div>
+
+          {/* Tags Field */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
+              Tags (Press Enter to add):
+            </label>
+            <div style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px',
+              background: 'var(--bg-input)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)'
+            }}>
+              {tags.map(t => (
+                <span key={t} className="tag-badge">
+                  #{t}
+                  <X 
+                    size={12} 
+                    style={{ cursor: 'pointer', marginLeft: '4px' }} 
+                    onClick={() => handleRemoveTag(t)}
                   />
-                </div>
-
-                {notes.length > 1 && (
-                  <button
-                    className="btn btn-ghost btn-icon"
-                    style={{ width: '28px', height: '28px', color: 'var(--text-dim)' }}
-                    onClick={() => handleRemoveSegment(seg.id)}
-                    title="Remove Note"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-
-              {/* Plain Text Note Content */}
-              <textarea
-                className="textarea"
+                </span>
+              ))}
+              <input
+                type="text"
+                value={tagInput}
+                onChange={(e) => setTagInput(e.target.value)}
+                onKeyDown={handleAddTag}
+                placeholder="Add tag..."
                 style={{
-                  minHeight: '120px',
-                  fontFamily: 'var(--font-sans)',
-                  fontSize: '0.92rem',
-                  lineHeight: '1.6'
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#ffffff',
+                  outline: 'none',
+                  fontSize: '0.85rem',
+                  minWidth: '90px',
+                  flex: 1
                 }}
-                value={seg.content}
-                onChange={(e) => handleUpdateNote(seg.id, 'content', e.target.value)}
-                placeholder="Plain text content..."
               />
-
-              {/* Tags */}
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                gap: '6px',
-                background: 'var(--bg-input)',
-                padding: '6px 10px',
-                borderRadius: 'var(--radius-sm)'
-              }}>
-                {(seg.tags || []).map(t => (
-                  <span key={t} className="tag-badge" style={{ fontSize: '0.72rem', padding: '2px 8px' }}>
-                    #{t}
-                    <X
-                      size={11}
-                      style={{ cursor: 'pointer', marginLeft: '3px' }}
-                      onClick={() => handleRemoveTag(seg.id, t)}
-                    />
-                  </span>
-                ))}
-                <input
-                  type="text"
-                  value={tagInputs[seg.id] || ''}
-                  onChange={(e) => setTagInputs({ ...tagInputs, [seg.id]: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ',') {
-                      e.preventDefault();
-                      handleAddTag(seg.id, tagInputs[seg.id] || '');
-                    }
-                  }}
-                  placeholder="+ Add tag..."
-                  style={{
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#ffffff',
-                    outline: 'none',
-                    fontSize: '0.78rem',
-                    minWidth: '80px',
-                    flex: 1
-                  }}
-                />
-              </div>
             </div>
-          ))}
-
-          {/* Add Another Note Button */}
-          <button
-            className="btn btn-secondary"
-            onClick={handleAddNewSegment}
-            style={{ borderStyle: 'dashed', padding: '12px' }}
-          >
-            <Plus size={16} />
-            <span>Add Another Topic Note</span>
-          </button>
+          </div>
         </div>
+
+        {/* Right Side: Untouched Original Photo */}
+        {imageUrl && (
+          <div style={{
+            background: '#040711',
+            padding: '16px',
+            borderRadius: 'var(--radius-lg)',
+            border: '1px solid var(--border-subtle)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '12px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
+              <ImageIcon size={16} color="var(--accent-secondary)" />
+              <span>Original Photo (Untouched)</span>
+            </div>
+            
+            <div style={{
+              maxHeight: '440px',
+              overflowY: 'auto',
+              borderRadius: '8px',
+              background: '#000000',
+              display: 'flex',
+              justifyContent: 'center'
+            }}>
+              <img 
+                src={imageUrl} 
+                alt="Original Document" 
+                style={{
+                  maxWidth: '100%',
+                  objectFit: 'contain',
+                  display: 'block'
+                }}
+              />
+            </div>
+
+            <span style={{ fontSize: '0.74rem', color: 'var(--text-dim)', textAlign: 'center' }}>
+              Stored untouched in SQLite metadata
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

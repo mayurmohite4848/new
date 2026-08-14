@@ -19,6 +19,15 @@ export const api = {
     return request('/api/health');
   },
 
+  // Verify Gemini API key with Google AI Studio
+  async verifyKey(apiKey) {
+    return request('/api/verify-key', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: apiKey })
+    });
+  },
+
   // Fetch all notes with query filters
   async getNotes({ search = '', tag = '', favorite = false, sortBy = 'created_at', order = 'desc' } = {}) {
     const params = new URLSearchParams();
@@ -87,11 +96,11 @@ export const api = {
     if (title) formData.append('title', title);
     if (content) formData.append('content', content);
 
-    const apiKey = localStorage.getItem('gemini_api_key');
+    const apiKey = (localStorage.getItem('gemini_api_key') || '').trim();
     const headers = {};
     if (apiKey) {
-      formData.append('gemini_api_key', apiKey.trim());
-      headers['X-Gemini-Key'] = apiKey.trim();
+      formData.append('gemini_api_key', apiKey);
+      headers['X-Gemini-Key'] = apiKey;
     }
 
     return request('/api/upload', {

@@ -1,8 +1,12 @@
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Architects+Daughter&family=Caveat:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Kalam:wght@300;400;700&family=Patrick+Hand&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
 
 :root {
   --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --font-hand-caveat: 'Caveat', cursive;
+  --font-hand-kalam: 'Kalam', cursive;
+  --font-hand-architect: 'Architects Daughter', cursive;
+  --font-hand-patrick: 'Patrick Hand', cursive;
 
   /* Colors */
   --bg-main: #090d16;
@@ -90,6 +94,95 @@ body {
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
+}
+
+/* White Paper Canvas Styles */
+.white-paper-canvas {
+  background-color: #ffffff;
+  color: #1a1a24;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 32px 36px;
+  position: relative;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.white-paper-canvas.paper-ruled {
+  background-image: repeating-linear-gradient(
+    transparent,
+    transparent 27px,
+    #e2e8f0 28px
+  );
+  line-height: 28px;
+}
+
+.white-paper-canvas.paper-dots {
+  background-image: radial-gradient(#cbd5e1 1.5px, transparent 1.5px);
+  background-size: 20px 20px;
+}
+
+.white-paper-canvas.paper-blank {
+  background-color: #ffffff;
+}
+
+/* Handwriting Typography Styles (Natural, Organic Pen Flow) */
+.handwriting-text {
+  color: #1e293b;
+  word-spacing: 0.12em;
+  text-rendering: optimizeLegibility;
+}
+
+.handwriting-text.font-caveat {
+  font-family: var(--font-hand-caveat);
+  font-size: 1.45rem;
+  line-height: 1.6;
+  font-weight: 500;
+}
+
+.handwriting-text.font-kalam {
+  font-family: var(--font-hand-kalam);
+  font-size: 1.25rem;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+.handwriting-text.font-architect {
+  font-family: var(--font-hand-architect);
+  font-size: 1.15rem;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+.handwriting-text.font-patrick {
+  font-family: var(--font-hand-patrick);
+  font-size: 1.3rem;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+/* Minimal AI Sticky Note */
+.ai-sticky-note {
+  background: #fef08a; /* soft post-it yellow */
+  color: #713f12;
+  border-radius: 8px;
+  padding: 16px 18px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid #eab308;
+  font-family: var(--font-sans);
+  position: relative;
+  transform: rotate(-0.5deg);
+  transition: transform 0.15s ease;
+}
+
+.ai-sticky-note:hover {
+  transform: rotate(0deg) scale(1.01);
+}
+
+.ai-sticky-note.cyan-mode {
+  background: #cffafe;
+  color: #155e75;
+  border-left-color: #06b6d4;
 }
 
 /* Buttons */
@@ -226,9 +319,9 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(3, 7, 18, 0.82);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(3, 7, 18, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -241,9 +334,9 @@ body {
   background: #0f172a;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: var(--radius-xl);
-  max-width: 900px;
+  max-width: 960px;
   width: 100%;
-  max-height: 90vh;
+  max-height: 92vh;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-lg);
@@ -274,6 +367,33 @@ body {
   flex-direction: column;
   gap: 14px;
   margin-top: 24px;
+}
+
+/* Tab buttons in modal */
+.tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab-btn.active {
+  background: rgba(99, 102, 241, 0.2);
+  color: #ffffff;
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.tab-btn:hover:not(.active) {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
 }
 
 /* Animations */

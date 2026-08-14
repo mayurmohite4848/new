@@ -38,12 +38,21 @@ export const api = {
     return request(`/api/notes/${id}`);
   },
 
-  // Create manual or text note
+  // Create single manual or text note
   async createNote(noteData) {
     return request('/api/notes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(noteData)
+    });
+  },
+
+  // Batch create multiple notes (from Review & Split workflow)
+  async batchCreateNotes(notesArray) {
+    return request('/api/notes/batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notes: notesArray })
     });
   },
 
@@ -63,7 +72,14 @@ export const api = {
     });
   },
 
-  // Upload image & extract metadata/text
+  // Trigger minimal AI enhancements for a note
+  async enhanceNoteAI(id) {
+    return request(`/api/notes/${id}/enhance-ai`, {
+      method: 'POST'
+    });
+  },
+
+  // Upload image, remove background onto white canvas & extract metadata/text
   async uploadImage(file, { autoSave = false, title = '', content = '' } = {}) {
     const formData = new FormData();
     formData.append('file', file);

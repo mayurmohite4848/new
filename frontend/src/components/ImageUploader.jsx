@@ -1,17 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { 
   UploadCloud, 
-  FileImage, 
   Sparkles, 
-  Check, 
   X, 
-  Tag, 
-  Info,
-  Maximize2,
-  FileText,
-  Save,
+  Layers,
   ArrowRight
 } from 'lucide-react';
+import MultiNoteSplitReview from './MultiNoteSplitReview';
 import { api } from '../services/api';
 
 export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
@@ -21,13 +16,7 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
   const [processing, setProcessing] = useState(false);
   
   // Extraction result state
-  const [extractionResult, setExtractionResult] = useState(null);
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [extractedText, setExtractedText] = useState('');
-  const [tags, setTags] = useState([]);
-  const [tagInput, setTagInput] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [extractionDraft, setExtractionDraft] = useState(null);
 
   const fileInputRef = useRef(null);
 
@@ -57,7 +46,6 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
   };
 
   const handleFileSelected = (file) => {
-    // Validate file type
     const validExtensions = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'tiff'];
     const ext = file.name.split('.').pop().toLowerCase();
     if (!validExtensions.includes(ext)) {
@@ -65,7 +53,6 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
       return;
     }
 
-    // Max 25 MB
     if (file.size > 25 * 1024 * 1024) {
       showToast('File size is too large (max 25MB).', 'error');
       return;
@@ -74,7 +61,7 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
     setSelectedFile(file);
     const objectUrl = URL.createObjectURL(file);
     setPreviewUrl(objectUrl);
-    setExtractionResult(null);
+    setExtractionDraft(null);
   };
 
   const handleProcessImage = async () => {
@@ -85,13 +72,9 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
       const response = await api.uploadImage(selectedFile, { autoSave: false });
       const draft = response.draft;
       
-      setExtractionResult(draft);
-      setTitle(draft.title || selectedFile.name);
-      setContent(draft.content || '');
-      setExtractedText(draft.extracted_text || '');
-      setTags(draft.tags || ['image-note']);
-      
-      showToast('Image metadata & notes extracted successfully!', 'success');
+      setExtractionDraft(draft);
+      const count = draft.segmented_notes ? draft.segmented_notes.length : 1;
+      showToast(`Handwriting identified! Ready to review ${count} note topic(s).`, 'success');
     } catch (err) {
       showToast(err.message || 'Failed to process image.', 'error');
     } finally {
@@ -99,63 +82,31 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
     }
   };
 
-  const handleAddTag = (e) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      const val = tagInput.trim().replace(/^#/, '').toLowerCase();
-      if (val && !tags.includes(val)) {
-        setTags([...tags, val]);
-        setTagInput('');
-      }
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove) => {
-    setTags(tags.filter(t => t !== tagToRemove));
-  };
-
-  const handleSaveNote = async () => {
-    if (!title.trim()) {
-      showToast('Please enter a note title.', 'error');
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const payload = {
-        title: title.trim(),
-        content: content.trim(),
-        extracted_text: extractedText.trim(),
-        image_filename: extractionResult.image_filename,
-        image_path: extractionResult.image_url,
-        image_metadata: extractionResult.image_metadata,
-        tags: tags,
-        is_favorite: false
-      };
-
-      const res = await api.createNote(payload);
-      showToast('Note saved to SQLite database!', 'success');
-      if (onNoteCreated) onNoteCreated(res.note);
-      resetState();
-      if (onClose) onClose();
-    } catch (err) {
-      showToast(err.message || 'Failed to save note.', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const resetState = () => {
     setSelectedFile(null);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     setPreviewUrl(null);
-    setExtractionResult(null);
-    setTitle('');
-    setContent('');
-    setExtractedText('');
-    setTags([]);
-    setTagInput('');
+    setExtractionDraft(null);
   };
+
+  // If extraction draft is ready, render the MultiNoteSplitReview stage!
+  if (extractionDraft) {
+    return (
+      <MultiNoteSplitReview
+        draftData={extractionDraft}
+        onNotesCreated={(createdNotes) => {
+          if (onNoteCreated) {
+            // Trigger refresh for all created notes
+            createdNotes.forEach(n => onNoteCreated(n));
+          }
+          resetState();
+          if (onClose) onClose();
+        }}
+        onCancel={resetState}
+        showToast={showToast}
+      />
+    );
+  }
 
   return (
     <div className="glass-panel" style={{
@@ -174,19 +125,24 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '8px',
+            width: '34px',
+            height: '34px',
+            borderRadius: '10px',
             background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            <Sparkles size={16} color="#ffffff" />
+            <Sparkles size={17} color="#ffffff" />
           </div>
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-main)' }}>
-            Image Uploader & Note Extractor
-          </h2>
+          <div>
+            <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-main)' }}>
+              PyTorch Handwriting OCR & Multi-Note Extractor
+            </h2>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Identifies text/handwriting from photos, splits topics, and creates structured notes on pure white canvas.
+            </p>
+          </div>
         </div>
 
         {onClose && (
@@ -200,288 +156,111 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
         )}
       </div>
 
-      {!extractionResult ? (
-        /* Upload & Dropzone Step */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-          <div
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              border: `2px dashed ${dragActive ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.15)'}`,
-              borderRadius: 'var(--radius-lg)',
-              padding: '36px 20px',
-              textAlign: 'center',
-              cursor: 'pointer',
-              background: dragActive ? 'rgba(99, 102, 241, 0.1)' : 'rgba(15, 23, 42, 0.5)',
-              transition: 'all 0.2s ease',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '12px'
-            }}
-          >
-            <input 
-              ref={fileInputRef}
-              type="file" 
-              accept="image/*" 
-              style={{ display: 'none' }} 
-              onChange={handleFileChange}
-            />
+      {/* Upload Dropzone */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+        <div
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          style={{
+            border: `2px dashed ${dragActive ? 'var(--accent-primary)' : 'rgba(255, 255, 255, 0.15)'}`,
+            borderRadius: 'var(--radius-lg)',
+            padding: '36px 20px',
+            textAlign: 'center',
+            cursor: 'pointer',
+            background: dragActive ? 'rgba(99, 102, 241, 0.1)' : 'rgba(15, 23, 42, 0.5)',
+            transition: 'all 0.2s ease',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '12px'
+          }}
+        >
+          <input 
+            ref={fileInputRef}
+            type="file" 
+            accept="image/*" 
+            style={{ display: 'none' }} 
+            onChange={handleFileChange}
+          />
 
-            {previewUrl ? (
-              <div style={{ position: 'relative', maxWidth: '300px', maxHeight: '200px' }}>
-                <img 
-                  src={previewUrl} 
-                  alt="Selected Preview" 
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '180px',
-                    borderRadius: '8px',
-                    objectFit: 'contain',
-                    boxShadow: 'var(--shadow-sm)'
-                  }}
-                />
-                <div style={{
-                  marginTop: '8px',
-                  fontSize: '0.85rem',
-                  color: 'var(--text-muted)',
-                  fontWeight: 500
-                }}>
-                  {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
-                </div>
-              </div>
-            ) : (
-              <>
-                <div style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '16px',
-                  background: 'rgba(99, 102, 241, 0.15)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: '#818cf8',
-                  boxShadow: '0 0 15px rgba(99, 102, 241, 0.2)'
-                }}>
-                  <UploadCloud size={28} />
-                </div>
-                <div>
-                  <p style={{ fontSize: '0.98rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                    Drop your image here, or <span style={{ color: 'var(--accent-primary)' }}>browse</span>
-                  </p>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-                    Supports PNG, JPG, JPEG, WEBP, GIF, BMP (up to 25MB)
-                  </p>
-                </div>
-              </>
-            )}
-          </div>
-
-          {selectedFile && (
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
-              <button 
-                className="btn btn-secondary btn-sm"
-                onClick={resetState}
-                disabled={processing}
-              >
-                Clear
-              </button>
-              <button
-                className="btn btn-primary"
-                onClick={handleProcessImage}
-                disabled={processing}
-              >
-                {processing ? (
-                  <>
-                    <span className="animate-pulse-subtle">Extracting Metadata & Text...</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={16} />
-                    <span>Extract & Create Note</span>
-                  </>
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Review & Save Step */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(260px, 320px) 1fr',
-            gap: '24px'
-          }}>
-            {/* Left: Image & Technical Metadata */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {previewUrl ? (
+            <div style={{ position: 'relative', maxWidth: '300px', maxHeight: '200px' }}>
+              <img 
+                src={previewUrl} 
+                alt="Selected Preview" 
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '180px',
+                  borderRadius: '8px',
+                  objectFit: 'contain',
+                  boxShadow: 'var(--shadow-sm)'
+                }}
+              />
               <div style={{
-                borderRadius: 'var(--radius-md)',
-                overflow: 'hidden',
-                background: '#090d16',
-                border: '1px solid var(--border-subtle)',
-                maxHeight: '260px',
+                marginTop: '8px',
+                fontSize: '0.85rem',
+                color: 'var(--text-muted)',
+                fontWeight: 500
+              }}>
+                {selectedFile.name} ({(selectedFile.size / 1024).toFixed(1)} KB)
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{
+                width: '56px',
+                height: '56px',
+                borderRadius: '16px',
+                background: 'rgba(99, 102, 241, 0.15)',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                color: '#818cf8',
+                boxShadow: '0 0 15px rgba(99, 102, 241, 0.2)'
               }}>
-                <img
-                  src={previewUrl}
-                  alt="Extracted file"
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                />
+                <UploadCloud size={28} />
               </div>
-
-              {/* Technical Metadata Card */}
-              {extractionResult.image_metadata && (
-                <div style={{
-                  padding: '14px',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'rgba(15, 23, 42, 0.7)',
-                  border: '1px solid var(--border-subtle)',
-                  fontSize: '0.8rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '6px'
-                }}>
-                  <div style={{ fontWeight: 700, color: 'var(--text-main)', marginBottom: '4px' }}>
-                    📐 Extracted Metadata
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>Dimensions:</span>
-                    <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
-                      {extractionResult.image_metadata.width} × {extractionResult.image_metadata.height} px
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>Aspect Ratio:</span>
-                    <strong style={{ color: 'var(--text-main)' }}>
-                      {extractionResult.image_metadata.aspect_ratio}
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>Format / Mode:</span>
-                    <strong style={{ color: 'var(--text-main)' }}>
-                      {extractionResult.image_metadata.format} ({extractionResult.image_metadata.mode})
-                    </strong>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>File Size:</span>
-                    <strong style={{ color: 'var(--text-main)' }}>
-                      {extractionResult.image_metadata.file_size_human}
-                    </strong>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Right: Editable Note Fields */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Note Title
-                </label>
-                <input 
-                  type="text"
-                  className="input"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Enter note title..."
-                />
+                <p style={{ fontSize: '0.98rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                  Drop whiteboard or handwritten photo here, or <span style={{ color: 'var(--accent-primary)' }}>browse</span>
+                </p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+                  Background will be removed to pure white and split into reviewable notes
+                </p>
               </div>
+            </>
+          )}
+        </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Extracted Note Content & Summary
-                </label>
-                <textarea
-                  className="textarea"
-                  style={{ minHeight: '140px' }}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Note body..."
-                />
-              </div>
-
-              {/* Tags Editor */}
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Tags (Type and press Enter)
-                </label>
-                <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px',
-                  background: 'var(--bg-input)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)'
-                }}>
-                  {tags.map(t => (
-                    <span key={t} className="tag-badge">
-                      #{t}
-                      <X 
-                        size={12} 
-                        style={{ cursor: 'pointer', marginLeft: '4px' }} 
-                        onClick={() => handleRemoveTag(t)}
-                      />
-                    </span>
-                  ))}
-                  <input
-                    type="text"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={handleAddTag}
-                    placeholder="Add tag..."
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#ffffff',
-                      outline: 'none',
-                      fontSize: '0.85rem',
-                      minWidth: '90px',
-                      flex: 1
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Action Bar */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            borderTop: '1px solid var(--border-subtle)',
-            paddingTop: '16px'
-          }}>
-            <button
+        {selectedFile && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '10px' }}>
+            <button 
               className="btn btn-secondary btn-sm"
               onClick={resetState}
+              disabled={processing}
             >
-              Cancel & Discard
+              Clear
             </button>
-
             <button
               className="btn btn-primary"
-              onClick={handleSaveNote}
-              disabled={saving}
+              onClick={handleProcessImage}
+              disabled={processing}
             >
-              {saving ? 'Saving to SQLite...' : (
+              {processing ? (
+                <span className="animate-pulse-subtle">Identifying Handwriting & Splitting Topics...</span>
+              ) : (
                 <>
-                  <Save size={16} />
-                  <span>Save Note to SQLite</span>
+                  <Sparkles size={16} />
+                  <span>Identify Text & Split into Notes</span>
                 </>
               )}
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

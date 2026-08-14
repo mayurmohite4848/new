@@ -2,12 +2,11 @@ import React from 'react';
 import { 
   Star, 
   Trash2, 
-  Eye, 
   Calendar, 
-  Image as ImageIcon, 
-  FileText,
-  Copy,
-  Check
+  Copy, 
+  Check,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 
 export default function NoteCard({ 
@@ -25,14 +24,18 @@ export default function NoteCard({
     if (textToCopy) {
       navigator.clipboard.writeText(textToCopy);
       setCopied(true);
-      if (showToast) showToast('Copied text to clipboard!', 'info');
+      if (showToast) showToast('Copied note text!', 'info');
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
-  const hasImage = Boolean(note.image_filename);
+  const hasImage = Boolean(note.cleaned_image_filename || note.image_filename);
+  const displayImageFilename = note.cleaned_image_filename || note.image_filename;
+  const isCleanWhite = Boolean(note.cleaned_image_filename);
   const metadata = note.image_metadata || {};
   const tags = note.tags || [];
+  const handwritingStyle = note.handwriting_style || 'font-caveat';
+  const hasAi = Boolean(note.ai_insights && note.ai_insights.key_takeaways?.length > 0);
 
   return (
     <div 
@@ -60,27 +63,28 @@ export default function NoteCard({
         e.currentTarget.style.boxShadow = 'none';
       }}
     >
-      {/* Thumbnail Banner if image exists */}
+      {/* Thumbnail Banner: Rendered on clean white background if cleaned */}
       {hasImage && (
         <div style={{
           position: 'relative',
           width: '100%',
           height: '180px',
-          background: '#040711',
+          background: isCleanWhite ? '#ffffff' : '#040711',
           borderBottom: '1px solid var(--border-subtle)',
           overflow: 'hidden',
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          padding: isCleanWhite ? '8px' : '0'
         }}>
           <img 
-            src={`/api/uploads/${note.image_filename}`} 
+            src={`/api/uploads/${displayImageFilename}`} 
             alt={note.title}
             loading="lazy"
             style={{
               width: '100%',
               height: '100%',
-              objectFit: 'cover',
+              objectFit: 'contain',
               transition: 'transform 0.3s ease'
             }}
             onError={(e) => {
@@ -88,31 +92,48 @@ export default function NoteCard({
             }}
           />
 
-          {/* Metadata Overlay Badges */}
-          <div style={{
-            position: 'absolute',
-            bottom: '8px',
-            left: '8px',
-            display: 'flex',
-            gap: '6px',
-            flexWrap: 'wrap'
-          }}>
-            {metadata.format && (
-              <span className="meta-chip" style={{ background: 'rgba(0,0,0,0.7)', color: '#67e8f9' }}>
-                {metadata.format}
-              </span>
-            )}
-            {metadata.width && metadata.height ? (
-              <span className="meta-chip" style={{ background: 'rgba(0,0,0,0.7)' }}>
-                {metadata.width}×{metadata.height}
-              </span>
-            ) : null}
-            {metadata.file_size_human && (
-              <span className="meta-chip" style={{ background: 'rgba(0,0,0,0.7)' }}>
-                {metadata.file_size_human}
-              </span>
-            )}
-          </div>
+          {/* Clean White Canvas indicator */}
+          {isCleanWhite && (
+            <div style={{
+              position: 'absolute',
+              top: '8px',
+              left: '8px',
+              background: 'rgba(15, 23, 42, 0.85)',
+              backdropFilter: 'blur(4px)',
+              padding: '2px 8px',
+              borderRadius: '6px',
+              fontSize: '0.68rem',
+              fontWeight: 600,
+              color: '#67e8f9',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <Layers size={11} />
+              <span>Clean White Canvas</span>
+            </div>
+          )}
+
+          {/* AI Badge if available */}
+          {hasAi && (
+            <div style={{
+              position: 'absolute',
+              top: '8px',
+              right: '8px',
+              background: 'rgba(234, 179, 8, 0.9)',
+              padding: '2px 8px',
+              borderRadius: '6px',
+              fontSize: '0.68rem',
+              fontWeight: 700,
+              color: '#713f12',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '3px'
+            }}>
+              <Sparkles size={11} />
+              <span>AI Notes</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -153,24 +174,22 @@ export default function NoteCard({
               padding: '2px',
               transition: 'transform 0.15s ease'
             }}
-            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
-            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
           >
             <Star size={18} fill={note.is_favorite ? '#f59e0b' : 'none'} />
           </button>
         </div>
 
-        {/* Content Snippet */}
-        <p style={{
-          fontSize: '0.85rem',
-          color: 'var(--text-muted)',
+        {/* Content Snippet in Natural Handwriting Font */}
+        <p className={`handwriting-text ${handwritingStyle}`} style={{
+          color: '#cbd5e1',
           lineHeight: 1.5,
           overflow: 'hidden',
           display: '-webkit-box',
           WebkitLineClamp: hasImage ? 3 : 5,
           WebkitBoxOrient: 'vertical',
           flex: 1,
-          whiteSpace: 'pre-wrap'
+          whiteSpace: 'pre-wrap',
+          fontSize: handwritingStyle === 'font-caveat' ? '1.25rem' : '1.1rem'
         }}>
           {note.content}
         </p>
@@ -189,7 +208,7 @@ export default function NoteCard({
           </div>
         )}
 
-        {/* Card Footer: Date & Actions */}
+        {/* Card Footer */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -206,7 +225,6 @@ export default function NoteCard({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Copy snippet */}
             <button
               onClick={handleCopy}
               className="btn btn-ghost btn-icon"
@@ -216,7 +234,6 @@ export default function NoteCard({
               {copied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
             </button>
 
-            {/* Quick Delete */}
             <button
               onClick={(e) => {
                 e.stopPropagation();

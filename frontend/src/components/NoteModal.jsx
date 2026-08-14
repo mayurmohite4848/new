@@ -12,8 +12,12 @@ import {
   Tag as TagIcon,
   FileText,
   ExternalLink,
-  Edit3
+  Edit3,
+  Sparkles,
+  Image as ImageIcon,
+  BookOpen
 } from 'lucide-react';
+import WhiteboardNoteCanvas from './WhiteboardNoteCanvas';
 import { api } from '../services/api';
 
 export default function NoteModal({ 
@@ -23,21 +27,27 @@ export default function NoteModal({
   onNoteDeleted, 
   showToast 
 }) {
+  const [activeTab, setActiveTab] = useState('sheet'); // 'sheet' | 'ink' | 'ai' | 'original' | 'meta'
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(note?.title || '');
   const [content, setContent] = useState(note?.content || '');
   const [extractedText, setExtractedText] = useState(note?.extracted_text || '');
+  const [handwritingStyle, setHandwritingStyle] = useState(note?.handwriting_style || 'font-caveat');
   const [tags, setTags] = useState(note?.tags || []);
   const [tagInput, setTagInput] = useState('');
   const [isFavorite, setIsFavorite] = useState(note?.is_favorite || false);
   const [saving, setSaving] = useState(false);
+  const [enhancingAi, setEnhancingAi] = useState(false);
   const [copied, setCopied] = useState(false);
 
   if (!note) return null;
 
   const metadata = note.image_metadata || {};
   const hasImage = Boolean(note.image_filename);
-  const imageUrl = note.image_filename ? `/api/uploads/${note.image_filename}` : null;
+  const rawImageUrl = note.image_filename ? `/api/uploads/${note.image_filename}` : null;
+  const cleanedImageUrl = note.cleaned_image_filename 
+    ? `/api/uploads/${note.cleaned_image_filename}` 
+    : rawImageUrl;
 
   const handleCopyText = () => {
     const textToCopy = extractedText || content || '';
@@ -76,17 +86,31 @@ export default function NoteModal({
         title: title.trim(),
         content: content.trim(),
         extracted_text: extractedText.trim(),
+        handwriting_style: handwritingStyle,
         tags: tags,
         is_favorite: isFavorite
       });
 
-      showToast('Note updated successfully!', 'success');
+      showToast('Note saved successfully!', 'success');
       setIsEditing(false);
       if (onNoteUpdated) onNoteUpdated(updated.note);
     } catch (err) {
       showToast(err.message || 'Failed to update note.', 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTriggerAiEnhance = async () => {
+    setEnhancingAi(true);
+    try {
+      const res = await api.enhanceNoteAI(note.id);
+      showToast('Minimal AI insights refreshed with zero cost!', 'success');
+      if (onNoteUpdated) onNoteUpdated(res.note);
+    } catch (err) {
+      showToast(err.message || 'Failed to enhance with AI.', 'error');
+    } finally {
+      setEnhancingAi(false);
     }
   };
 
@@ -108,22 +132,24 @@ export default function NoteModal({
         className="modal-content"
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: hasImage ? '1000px' : '750px',
-          maxHeight: '92vh',
+          maxWidth: '1050px',
+          maxHeight: '94vh',
           display: 'flex',
           flexDirection: 'column'
         }}
       >
         {/* Modal Header */}
         <div style={{
-          padding: '18px 24px',
+          padding: '16px 24px',
           borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'rgba(15, 23, 42, 0.95)'
+          background: 'rgba(15, 23, 42, 0.95)',
+          flexWrap: 'wrap',
+          gap: '12px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, marginRight: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '240px' }}>
             <button
               onClick={() => {
                 setIsFavorite(!isFavorite);
@@ -155,7 +181,7 @@ export default function NoteModal({
               />
             ) : (
               <h2 style={{
-                fontSize: '1.2rem',
+                fontSize: '1.25rem',
                 fontWeight: 700,
                 color: 'var(--text-main)',
                 lineHeight: 1.3
@@ -165,15 +191,25 @@ export default function NoteModal({
             )}
           </div>
 
-          {/* Quick Actions */}
+          {/* Quick Action Buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={handleTriggerAiEnhance}
+              disabled={enhancingAi}
+              title="Generate or refresh zero-cost minimal AI insights"
+            >
+              <Sparkles size={14} color="#eab308" className={enhancingAi ? 'animate-pulse-subtle' : ''} />
+              <span>{enhancingAi ? 'Generating AI...' : 'Refresh AI'}</span>
+            </button>
+
             {!isEditing ? (
               <button 
                 className="btn btn-secondary btn-sm"
                 onClick={() => setIsEditing(true)}
               >
-                <Edit3 size={15} />
-                <span>Edit</span>
+                <Edit3 size={14} />
+                <span>Edit Note</span>
               </button>
             ) : (
               <button 
@@ -181,7 +217,7 @@ export default function NoteModal({
                 onClick={handleSave}
                 disabled={saving}
               >
-                <Save size={15} />
+                <Save size={14} />
                 <span>{saving ? 'Saving...' : 'Save'}</span>
               </button>
             )}
@@ -191,7 +227,7 @@ export default function NoteModal({
               onClick={handleDelete}
               title="Delete note"
             >
-              <Trash2 size={15} />
+              <Trash2 size={14} />
             </button>
 
             <button 
@@ -199,277 +235,363 @@ export default function NoteModal({
               onClick={onClose}
               title="Close modal"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
+        </div>
+
+        {/* Navigation Tabs */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '10px 24px',
+          background: 'rgba(11, 17, 33, 0.9)',
+          borderBottom: '1px solid var(--border-subtle)',
+          overflowX: 'auto'
+        }}>
+          <button
+            className={`tab-btn ${activeTab === 'sheet' ? 'active' : ''}`}
+            onClick={() => setActiveTab('sheet')}
+          >
+            <BookOpen size={14} />
+            <span>Clean White Note Sheet</span>
+          </button>
+
+          {cleanedImageUrl && (
+            <button
+              className={`tab-btn ${activeTab === 'ink' ? 'active' : ''}`}
+              onClick={() => setActiveTab('ink')}
+            >
+              <Layers size={14} />
+              <span>Clean Inked Scan</span>
+            </button>
+          )}
+
+          <button
+            className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`}
+            onClick={() => setActiveTab('ai')}
+          >
+            <Sparkles size={14} color="#facc15" />
+            <span>Minimal AI Insights</span>
+          </button>
+
+          {rawImageUrl && (
+            <button
+              className={`tab-btn ${activeTab === 'original' ? 'active' : ''}`}
+              onClick={() => setActiveTab('original')}
+            >
+              <ImageIcon size={14} />
+              <span>Original Photo</span>
+            </button>
+          )}
+
+          <button
+            className={`tab-btn ${activeTab === 'meta' ? 'active' : ''}`}
+            onClick={() => setActiveTab('meta')}
+          >
+            <FileText size={14} />
+            <span>Metadata & Raw OCR</span>
+          </button>
         </div>
 
         {/* Modal Scrollable Body */}
         <div style={{
           padding: '24px',
           overflowY: 'auto',
+          flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          gap: '24px'
+          gap: '20px'
         }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: hasImage ? 'minmax(280px, 360px) 1fr' : '1fr',
-            gap: '24px'
-          }}>
-            {/* Left Column: Image & Technical Metadata */}
-            {hasImage && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div style={{
-                  borderRadius: 'var(--radius-md)',
-                  overflow: 'hidden',
-                  background: '#040711',
-                  border: '1px solid var(--border-subtle)',
-                  maxHeight: '340px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  position: 'relative'
-                }}>
-                  <img
-                    src={imageUrl}
-                    alt={title}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
-                  <a
-                    href={imageUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      position: 'absolute',
-                      top: '10px',
-                      right: '10px',
-                      background: 'rgba(0,0,0,0.75)',
-                      padding: '6px 10px',
-                      borderRadius: '6px',
-                      color: '#ffffff',
-                      fontSize: '0.75rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '4px',
-                      textDecoration: 'none'
-                    }}
-                  >
-                    <ExternalLink size={12} /> Open Full
-                  </a>
-                </div>
-
-                {/* Metadata Inspector Card */}
-                <div style={{
-                  padding: '16px',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'rgba(15, 23, 42, 0.75)',
-                  border: '1px solid var(--border-subtle)',
-                  fontSize: '0.82rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '8px'
-                }}>
-                  <div style={{ fontWeight: 700, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Layers size={15} color="#818cf8" />
-                    <span>Image Technical Metadata</span>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>Resolution:</span>
-                    <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
-                      {metadata.width || 'N/A'} × {metadata.height || 'N/A'} px
-                    </strong>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>Aspect Ratio:</span>
-                    <strong style={{ color: 'var(--text-main)' }}>
-                      {metadata.aspect_ratio || 'N/A'}
-                    </strong>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>Format & Mode:</span>
-                    <strong style={{ color: 'var(--text-main)' }}>
-                      {metadata.format || 'IMG'} ({metadata.mode || 'RGB'})
-                    </strong>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                    <span>File Size:</span>
-                    <strong style={{ color: 'var(--text-main)' }}>
-                      {metadata.file_size_human || 'N/A'}
-                    </strong>
-                  </div>
-
-                  {note.created_at && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                      <span>Indexed On:</span>
-                      <strong style={{ color: 'var(--text-main)' }}>
-                        {note.created_at}
-                      </strong>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Right Column: Note Content & Extracted Text */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-              {/* Note Content */}
+          {isEditing && (
+            /* Editing Banner */
+            <div className="glass-panel" style={{
+              padding: '16px',
+              border: '1px solid var(--accent-primary)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px'
+            }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Note Content & Body
+                  Handwritten Note Content (Editable)
                 </label>
-                {isEditing ? (
-                  <textarea
-                    className="textarea"
-                    style={{ minHeight: '180px' }}
-                    value={content}
-                    onChange={(e) => setContent(e.target.value)}
-                  />
-                ) : (
-                  <div style={{
-                    padding: '16px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    fontSize: '0.92rem',
-                    color: 'var(--text-main)',
-                    lineHeight: 1.6,
-                    whiteSpace: 'pre-wrap'
-                  }}>
-                    {content || 'No content added yet.'}
-                  </div>
-                )}
+                <textarea
+                  className="textarea"
+                  style={{ minHeight: '140px' }}
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                />
               </div>
 
-              {/* Extracted Text Inspector */}
-              {(extractedText || isEditing) && (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                    <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                      Extracted Text / OCR Output
-                    </label>
-                    <button 
-                      className="btn btn-ghost btn-sm"
-                      onClick={handleCopyText}
-                      style={{ padding: '2px 8px', fontSize: '0.75rem' }}
-                    >
-                      {copied ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
-                      <span>{copied ? 'Copied' : 'Copy Text'}</span>
-                    </button>
-                  </div>
-
-                  {isEditing ? (
-                    <textarea
-                      className="textarea"
-                      style={{ minHeight: '100px', fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}
-                      value={extractedText}
-                      onChange={(e) => setExtractedText(e.target.value)}
-                      placeholder="Extracted text preview..."
-                    />
-                  ) : (
-                    <div style={{
-                      padding: '12px',
-                      borderRadius: 'var(--radius-md)',
-                      background: 'rgba(15, 23, 42, 0.6)',
-                      border: '1px dashed var(--border-subtle)',
-                      fontSize: '0.82rem',
-                      color: 'var(--text-muted)',
-                      fontFamily: 'var(--font-mono)',
-                      whiteSpace: 'pre-wrap',
-                      maxHeight: '140px',
-                      overflowY: 'auto'
-                    }}>
-                      {extractedText || 'No text extracted from this note.'}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Tags */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
                   Tags
                 </label>
-                {isEditing ? (
-                  <div style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: '8px',
-                    padding: '8px',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)'
-                  }}>
-                    {tags.map(t => (
-                      <span key={t} className="tag-badge">
-                        #{t}
-                        <X 
-                          size={12} 
-                          style={{ cursor: 'pointer', marginLeft: '4px' }} 
-                          onClick={() => handleRemoveTag(t)}
-                        />
-                      </span>
-                    ))}
-                    <input
-                      type="text"
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyDown={handleAddTag}
-                      placeholder="Add tag and hit Enter..."
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#ffffff',
-                        outline: 'none',
-                        fontSize: '0.85rem',
-                        minWidth: '100px',
-                        flex: 1
-                      }}
-                    />
+                <div style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)'
+                }}>
+                  {tags.map(t => (
+                    <span key={t} className="tag-badge">
+                      #{t}
+                      <X 
+                        size={12} 
+                        style={{ cursor: 'pointer', marginLeft: '4px' }} 
+                        onClick={() => handleRemoveTag(t)}
+                      />
+                    </span>
+                  ))}
+                  <input
+                    type="text"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={handleAddTag}
+                    placeholder="Add tag and press Enter..."
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: '#ffffff',
+                      outline: 'none',
+                      fontSize: '0.85rem',
+                      minWidth: '100px',
+                      flex: 1
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 1: Clean White Note Sheet (Default) */}
+          {activeTab === 'sheet' && (
+            <WhiteboardNoteCanvas
+              note={{
+                ...note,
+                title,
+                content,
+                extracted_text: extractedText,
+                handwriting_style: handwritingStyle,
+                tags
+              }}
+              onUpdateStyle={(newStyle) => {
+                setHandwritingStyle(newStyle);
+                api.updateNote(note.id, { handwriting_style: newStyle });
+              }}
+              showToast={showToast}
+            />
+          )}
+
+          {/* TAB 2: Clean Inked Scan on White Canvas */}
+          {activeTab === 'ink' && cleanedImageUrl && (
+            <div style={{
+              background: '#ffffff',
+              padding: '24px',
+              borderRadius: '12px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: '16px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+            }}>
+              <div style={{
+                fontSize: '0.9rem',
+                color: '#334155',
+                fontWeight: 600,
+                textAlign: 'center'
+              }}>
+                Extracted Ink Strokes (Background Removed onto Pure White Canvas)
+              </div>
+              <img
+                src={cleanedImageUrl}
+                alt="Clean Inked Scan"
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '520px',
+                  objectFit: 'contain'
+                }}
+              />
+              <a
+                href={cleanedImageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-secondary btn-sm"
+                style={{ color: '#0f172a', borderColor: '#cbd5e1' }}
+              >
+                <Download size={14} />
+                <span>Open Clean Inked PNG</span>
+              </a>
+            </div>
+          )}
+
+          {/* TAB 3: Minimal AI Insights */}
+          {activeTab === 'ai' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <div className="ai-sticky-note" style={{ transform: 'none', maxWidth: '100%' }}>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '12px',
+                  borderBottom: '1px dashed #ca8a04',
+                  paddingBottom: '8px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '1rem' }}>
+                    <Sparkles size={18} color="#ca8a04" />
+                    <span>Minimal AI Supplementary Notes (Zero Cost)</span>
                   </div>
-                ) : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                    {tags.length > 0 ? (
-                      tags.map(t => (
-                        <span key={t} className="tag-badge">
-                          #{t}
+                  <span style={{ fontSize: '0.75rem', color: '#a16207', fontWeight: 600 }}>
+                    100% Local / Free
+                  </span>
+                </div>
+
+                {note.ai_insights?.core_concept && (
+                  <div style={{
+                    fontSize: '0.95rem',
+                    fontWeight: 700,
+                    marginBottom: '14px',
+                    background: 'rgba(255, 255, 255, 0.6)',
+                    padding: '8px 12px',
+                    borderRadius: '6px'
+                  }}>
+                    💡 Core Subject: {note.ai_insights.core_concept}
+                  </div>
+                )}
+
+                <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px' }}>
+                  Key Takeaways (Kept strictly minimal):
+                </div>
+                <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
+                  {(note.ai_insights?.key_takeaways || ['Note content extracted and indexed.']).map((pt, i) => (
+                    <li key={i}>{pt}</li>
+                  ))}
+                </ul>
+
+                {note.ai_insights?.diagram_data?.steps && (
+                  <div style={{
+                    marginTop: '16px',
+                    padding: '12px',
+                    background: 'rgba(255,255,255,0.7)',
+                    borderRadius: '8px'
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#854d0e', marginBottom: '8px' }}>
+                      Conceptual Flow / Outline:
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {note.ai_insights.diagram_data.steps.map((st, idx) => (
+                        <span key={idx} style={{
+                          background: '#fef08a',
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #ca8a04',
+                          fontWeight: 600,
+                          fontSize: '0.8rem'
+                        }}>
+                          {st}
                         </span>
-                      ))
-                    ) : (
-                      <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>No tags</span>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
             </div>
-          </div>
-        </div>
+          )}
 
-        {/* Modal Footer */}
-        <div style={{
-          padding: '16px 24px',
-          borderTop: '1px solid var(--border-subtle)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          background: 'rgba(15, 23, 42, 0.95)'
-        }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Calendar size={14} />
-            <span>Last updated: {note.updated_at || note.created_at}</span>
-          </div>
+          {/* TAB 4: Original Photo */}
+          {activeTab === 'original' && rawImageUrl && (
+            <div style={{
+              borderRadius: '12px',
+              overflow: 'hidden',
+              background: '#040711',
+              border: '1px solid var(--border-subtle)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              padding: '16px',
+              gap: '12px'
+            }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Original Raw Camera Upload
+              </div>
+              <img
+                src={rawImageUrl}
+                alt="Original Upload"
+                style={{ maxWidth: '100%', maxHeight: '500px', objectFit: 'contain' }}
+              />
+              <a
+                href={rawImageUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-secondary btn-sm"
+              >
+                <ExternalLink size={14} />
+                <span>Open Full Original File</span>
+              </a>
+            </div>
+          )}
 
-          <button 
-            className="btn btn-secondary btn-sm"
-            onClick={onClose}
-          >
-            Close
-          </button>
+          {/* TAB 5: Metadata & Raw OCR */}
+          {activeTab === 'meta' && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 360px) 1fr', gap: '20px' }}>
+              {/* Technical Table */}
+              <div className="glass-panel" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.9rem' }}>
+                  📐 Image Properties
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  <span>Dimensions:</span>
+                  <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
+                    {metadata.width || 'N/A'} × {metadata.height || 'N/A'} px
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  <span>Aspect Ratio:</span>
+                  <strong style={{ color: 'var(--text-main)' }}>{metadata.aspect_ratio || 'N/A'}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  <span>Format:</span>
+                  <strong style={{ color: 'var(--text-main)' }}>{metadata.format || 'N/A'}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                  <span>Size:</span>
+                  <strong style={{ color: 'var(--text-main)' }}>{metadata.file_size_human || 'N/A'}</strong>
+                </div>
+              </div>
+
+              {/* Raw OCR text */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                    Raw Extracted Text
+                  </label>
+                  <button className="btn btn-ghost btn-sm" onClick={handleCopyText}>
+                    {copied ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+                <div style={{
+                  padding: '14px',
+                  borderRadius: 'var(--radius-md)',
+                  background: 'var(--bg-input)',
+                  border: '1px solid var(--border-subtle)',
+                  fontSize: '0.85rem',
+                  fontFamily: 'var(--font-mono)',
+                  color: 'var(--text-main)',
+                  whiteSpace: 'pre-wrap',
+                  minHeight: '160px'
+                }}>
+                  {extractedText || 'No OCR text extracted.'}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

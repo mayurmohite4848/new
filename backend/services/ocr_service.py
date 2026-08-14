@@ -2,6 +2,9 @@ import os
 import re
 import io
 import json
+import base64
+import urllib.request
+import urllib.error
 from PIL import Image
 
 _EASYOCR_READER = None
@@ -161,51 +164,105 @@ def expand_abbreviations_and_shortforms(text):
             result.append(token)
     return "".join(result)
 
+CANDIDATE_GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-2.5-pro",
+    "gemini-1.5-pro"
+]
+
 def transcribe_with_gemini(image_path, api_key=None):
     """
-    Transcribes handwritten/printed text from image using Gemini 2.0 / 1.5 Flash (Free Tier).
-    Understands cursive, messy penmanship, technical diagrams, and expands shorthand.
+    Transcribes handwritten text from image using Gemini Flash Vision.
+    Tries active model versions with both SDK and Direct REST fallback.
     """
-    key = api_key or os.environ.get("GEMINI_API_KEY")
+    key = (api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
     if not key:
+        print("[OCR] No Gemini API key provided. Using local PyTorch engine.")
         return None
 
-    try:
-        from google import genai
-        from google.genai import types
+    print(f"[OCR] Transcribing with Gemini Vision API (Key prefix: {key[:6]}...)...")
 
-        client = genai.Client(api_key=key)
+    prompt = (
+        "You are an expert handwriting transcription assistant.\n"
+        "Carefully transcribe all handwritten and printed English text from this notebook/document image into clear, accurate plain text.\n"
+        "Rules:\n"
+        "1. Accurately decipher cursive, messy handwriting, notes, and abbreviations.\n"
+        "2. Preserve the logical structure, headings, bullet points, and numbered lists.\n"
+        "3. Expand handwritten shorthand (e.g. w/, b/c, mgmt, reqs, arch, db) into clear words.\n"
+        "4. Return ONLY the transcribed plain text notes without conversational preamble or conversational ending."
+    )
 
-        prompt = (
-            "You are an expert handwriting transcription assistant.\n"
-            "Carefully transcribe all handwritten and printed English text from this image into clear, accurate plain text.\n"
-            "Rules:\n"
-            "1. Accurately decipher cursive, messy handwriting, and abbreviations.\n"
-            "2. Preserve the logical structure, headings, bullet points, and numbered lists.\n"
-            "3. If words are abbreviated (e.g. w/, b/c, mgmt, reqs), expand them or keep clear context.\n"
-            "4. Return ONLY the transcribed plain text notes without conversational filler."
-        )
+    with open(image_path, "rb") as f:
+        image_bytes = f.read()
 
-        with open(image_path, "rb") as f:
-            image_bytes = f.read()
+    ext = os.path.splitext(image_path)[1].lower().replace('.', '')
+    mime_type = "image/jpeg" if ext in ("jpg", "jpeg") else (f"image/{ext}" if ext else "image/jpeg")
 
-        # Determine MIME type
-        ext = os.path.splitext(image_path)[1].lower().replace('.', '')
-        mime_type = "image/jpeg" if ext in ("jpg", "jpeg") else (f"image/{ext}" if ext else "image/jpeg")
+    # Method 1: Google GenAI SDK
+    for model_name in CANDIDATE_GEMINI_MODELS:
+        try:
+            from google import genai
+            from google.genai import types
 
-        response = client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                prompt
-            ]
-        )
+            client = genai.Client(api_key=key)
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                    prompt
+                ]
+            )
+            if response and response.text:
+                print(f"[OCR] Successfully transcribed with GenAI SDK ({model_name})!")
+                return response.text.strip()
+        except Exception as e:
+            print(f"[OCR] GenAI SDK ({model_name}) attempt: {e}")
 
-        if response and response.text:
-            return response.text.strip()
-    except Exception as e:
-        print(f"Gemini Vision API error (falling back to local): {e}")
+    # Method 2: Direct Google AI Studio REST Endpoint
+    b64_data = base64.b64encode(image_bytes).decode('utf-8')
+    for model_name in CANDIDATE_GEMINI_MODELS:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+            payload = {
+                "contents": [
+                    {
+                        "parts": [
+                            {
+                                "inline_data": {
+                                    "mime_type": mime_type,
+                                    "data": b64_data
+                                }
+                            },
+                            {
+                                "text": prompt
+                            }
+                        ]
+                    }
+                ]
+            }
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers={"Content-Type": "application/json"}
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read().decode('utf-8'))
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        transcribed = parts[0]["text"].strip()
+                        print(f"[OCR] Successfully transcribed via direct REST ({model_name})!")
+                        return transcribed
+        except urllib.error.HTTPError as http_err:
+            err_body = http_err.read().decode('utf-8', errors='ignore')
+            print(f"[OCR] REST {model_name} HTTP {http_err.code}: {err_body}")
+        except Exception as rest_err:
+            print(f"[OCR] REST {model_name} error: {rest_err}")
 
+    print("[OCR] All Gemini transcription attempts failed. Falling back to local PyTorch OCR.")
     return None
 
 def extract_handwriting_text(image_path, api_key=None):
@@ -213,12 +270,11 @@ def extract_handwriting_text(image_path, api_key=None):
     Primary handwriting transcription engine.
     Tries Gemini Flash Vision first (if API key available), then falls back to local PyTorch OCR + NLP expander.
     """
-    # 1. Try Gemini Flash Vision if key is provided
     gemini_text = transcribe_with_gemini(image_path, api_key)
     if gemini_text:
         return gemini_text
 
-    # 2. Local PyTorch EasyOCR Fallback
+    # Local PyTorch EasyOCR Fallback
     raw_text = ""
     reader = get_ocr_reader()
     if reader:
@@ -227,7 +283,7 @@ def extract_handwriting_text(image_path, api_key=None):
             if results:
                 raw_text = "\n\n".join([r.strip() for r in results if r.strip()])
         except Exception as e:
-            print(f"Local OCR error: {e}")
+            print(f"[OCR] Local OCR error: {e}")
 
     if not raw_text:
         try:
@@ -240,7 +296,6 @@ def extract_handwriting_text(image_path, api_key=None):
     if not raw_text:
         return ""
 
-    # Correct common errors & expand shorthands
     corrected = correct_ocr_handwriting_errors(raw_text)
     return expand_abbreviations_and_shortforms(corrected)
 
@@ -255,7 +310,7 @@ def segment_text_into_notes(extracted_text, original_filename="", metadata=None)
         return [{
             "title": clean_base,
             "content": f"Notes extracted from {original_filename or 'image'}.\n\nAdd your annotations here.",
-            "tags": ["plain-text", "extracted"],
+            "tags": ["notes", "extracted"],
             "segment_index": 0
         }]
 
@@ -285,8 +340,8 @@ def segment_text_into_notes(extracted_text, original_filename="", metadata=None)
             lower_b = block_clean.lower()
             if any(k in lower_b for k in ["action", "todo", "task", "assign"]):
                 tags.append("action-items")
-            elif any(k in lower_b for k in ["architecture", "system", "design", "database", "api"]):
-                tags.append("architecture")
+            elif any(k in lower_b for k in ["architecture", "system", "design", "database", "api", "statistics"]):
+                tags.append("statistics")
             elif any(k in lower_b for k in ["summary", "key", "takeaway", "conclusion"]):
                 tags.append("summary")
 

@@ -59,15 +59,12 @@ export default function App() {
   const loadData = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
-      // Check health
       await api.checkHealth();
       setBackendOnline(true);
 
-      // Fetch stats
       const statsRes = await api.getStats();
       setStats(statsRes.stats || {});
 
-      // Fetch notes with current filters
       const notesRes = await api.getNotes({
         search: searchQuery,
         tag: selectedTag,
@@ -88,7 +85,6 @@ export default function App() {
     }
   }, [searchQuery, selectedTag, showFavoritesOnly, sortBy, sortOrder]);
 
-  // Initial load and filter change trigger
   useEffect(() => {
     loadData();
   }, [loadData]);
@@ -101,7 +97,6 @@ export default function App() {
       if (activeNote && activeNote.id === noteId) {
         setActiveNote(res.note);
       }
-      // Refresh stats
       const statsRes = await api.getStats();
       setStats(statsRes.stats || {});
       addToast(newStatus ? 'Added to favorites' : 'Removed from favorites', 'info');
@@ -147,10 +142,13 @@ export default function App() {
       {/* Top Header Navbar */}
       <Navbar
         backendOnline={backendOnline}
-        onOpenUpload={() => setShowUploader(!showUploader)}
+        onNewNote={() => setShowManualModal(true)}
         onOpenManualNote={() => setShowManualModal(true)}
+        onNewUpload={() => setShowUploader(prev => !prev)}
+        onOpenUpload={() => setShowUploader(prev => !prev)}
         onRefresh={() => loadData(true)}
         refreshing={refreshing}
+        showToast={addToast}
       />
 
       {/* Statistics & Tag Filter Bar */}
@@ -194,7 +192,7 @@ export default function App() {
             type="text"
             className="input"
             style={{ paddingLeft: '38px', paddingRight: searchQuery ? '36px' : '14px' }}
-            placeholder="Search notes, extracted text, metadata..."
+            placeholder="Search notes, text, tags..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -218,7 +216,6 @@ export default function App() {
 
         {/* Filters & View Toggles */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          {/* Active Tag Filter Indicator */}
           {selectedTag && (
             <span className="tag-badge" style={{ padding: '6px 12px' }}>
               Tag: #{selectedTag}
@@ -298,7 +295,7 @@ export default function App() {
       {loading ? (
         <div style={{ textAlign: 'center', padding: '80px 20px', color: 'var(--text-muted)' }}>
           <div className="animate-pulse-subtle" style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-            Loading notes and images from SQLite...
+            Loading notes from SQLite...
           </div>
         </div>
       ) : notes.length > 0 ? (
@@ -307,7 +304,8 @@ export default function App() {
             <NoteCard
               key={note.id}
               note={note}
-              onSelect={(n) => setActiveNote(n)}
+              onClick={() => setActiveNote(note)}
+              onSelect={() => setActiveNote(note)}
               onToggleFavorite={handleToggleFavorite}
               onDelete={handleDeleteNote}
               showToast={addToast}
@@ -346,7 +344,7 @@ export default function App() {
             <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', marginTop: '4px', maxWidth: '420px' }}>
               {searchQuery || selectedTag || showFavoritesOnly
                 ? 'Try clearing your search query or tag filters to see all notes.'
-                : 'Upload an image or create a text note to get started with note extraction.'}
+                : 'Upload a handwritten photo or create a plain text note to get started.'}
             </p>
           </div>
 
@@ -368,18 +366,20 @@ export default function App() {
               onClick={() => setShowUploader(true)}
             >
               <UploadCloud size={16} />
-              <span>Upload Image Note</span>
+              <span>Transcribe Photo</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Note Detail & Inspection Modal */}
+      {/* Note Detail Modal */}
       {activeNote && (
         <NoteModal
           note={activeNote}
+          noteId={activeNote.id}
           onClose={() => setActiveNote(null)}
           onNoteUpdated={handleNoteUpdated}
+          onDeleteNote={handleDeleteNote}
           onNoteDeleted={handleDeleteNote}
           showToast={addToast}
         />

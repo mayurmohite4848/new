@@ -15,28 +15,38 @@ import {
 } from 'lucide-react';
 import { api } from '../services/api';
 
-export default function NoteModal({ noteId, onClose, onNoteUpdated, onDeleteNote, showToast }) {
-  const [note, setNote] = useState(null);
-  const [loading, setLoading] = useState(true);
+export default function NoteModal({ 
+  note: initialNote, 
+  noteId, 
+  onClose, 
+  onNoteUpdated, 
+  onDeleteNote, 
+  onNoteDeleted, 
+  showToast 
+}) {
+  const targetNoteId = noteId || (initialNote && initialNote.id);
+  const [note, setNote] = useState(initialNote || null);
+  const [loading, setLoading] = useState(!initialNote && !!targetNoteId);
   const [activeTab, setActiveTab] = useState('notes'); // 'notes' | 'photo' | 'ai'
   
   // Edit mode state
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [tags, setTags] = useState([]);
+  const [title, setTitle] = useState(initialNote?.title || '');
+  const [content, setContent] = useState(initialNote?.content || initialNote?.extracted_text || '');
+  const [tags, setTags] = useState(initialNote?.tags || []);
   const [tagInput, setTagInput] = useState('');
-  const [isFavorite, setIsFavorite] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(!!initialNote?.is_favorite);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    fetchNoteDetail();
-  }, [noteId]);
+    if (targetNoteId) {
+      fetchNoteDetail(targetNoteId);
+    }
+  }, [targetNoteId]);
 
-  const fetchNoteDetail = async () => {
-    setLoading(true);
+  const fetchNoteDetail = async (id) => {
     try {
-      const res = await api.getNoteById(noteId);
+      const res = await api.getNoteById(id);
       const n = res.note;
       setNote(n);
       setTitle(n.title || '');
@@ -44,7 +54,7 @@ export default function NoteModal({ noteId, onClose, onNoteUpdated, onDeleteNote
       setTags(n.tags || []);
       setIsFavorite(!!n.is_favorite);
     } catch (err) {
-      showToast(err.message || 'Failed to load note.', 'error');
+      if (showToast) showToast(err.message || 'Failed to load note.', 'error');
       onClose();
     } finally {
       setLoading(false);
@@ -53,26 +63,31 @@ export default function NoteModal({ noteId, onClose, onNoteUpdated, onDeleteNote
 
   const handleSave = async () => {
     if (!title.trim()) {
-      showToast('Title cannot be empty.', 'error');
+      if (showToast) showToast('Title cannot be empty.', 'error');
       return;
     }
 
     setSaving(true);
     try {
-      const res = await api.updateNote(noteId, {
+      const res = await api.updateNote(targetNoteId, {
         title: title.trim(),
         content: content.trim(),
         tags,
         is_favorite: isFavorite
       });
       setNote(res.note);
-      onNoteUpdated(res.note);
-      showToast('Note saved successfully!', 'success');
+      if (onNoteUpdated) onNoteUpdated(res.note);
+      if (showToast) showToast('Note saved successfully!', 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to save note.', 'error');
+      if (showToast) showToast(err.message || 'Failed to save note.', 'error');
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = () => {
+    if (onDeleteNote) onDeleteNote(targetNoteId);
+    else if (onNoteDeleted) onNoteDeleted(targetNoteId);
   };
 
   const handleAddTag = (e) => {
@@ -93,14 +108,14 @@ export default function NoteModal({ noteId, onClose, onNoteUpdated, onDeleteNote
   const handleCopyText = () => {
     navigator.clipboard.writeText(content);
     setCopied(true);
-    showToast('Text copied to clipboard!', 'info');
+    if (showToast) showToast('Text copied to clipboard!', 'info');
     setTimeout(() => setCopied(false), 2000);
   };
 
   if (loading) {
     return (
-      <div className="modal-backdrop">
-        <div className="modal-content" style={{ padding: '40px', textAlign: 'center', maxWidth: '400px' }}>
+      <div className="modal-backdrop" onClick={onClose}>
+        <div className="modal-content" style={{ padding: '40px', textAlign: 'center', maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
           <p style={{ color: 'var(--text-muted)' }}>Loading note...</p>
         </div>
       </div>
@@ -177,7 +192,7 @@ export default function NoteModal({ noteId, onClose, onNoteUpdated, onDeleteNote
 
             <button
               className="btn btn-danger btn-sm btn-icon"
-              onClick={() => onDeleteNote(note.id)}
+              onClick={handleDelete}
               title="Delete Note"
             >
               <Trash2 size={16} />

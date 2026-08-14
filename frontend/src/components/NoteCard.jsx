@@ -9,7 +9,7 @@ import {
   Image as ImageIcon
 } from 'lucide-react';
 
-export default function NoteCard({ note, onClick, onToggleFavorite, onDelete }) {
+export default function NoteCard({ note, onClick, onSelect, onToggleFavorite, onDelete }) {
   const isFav = !!note.is_favorite;
 
   const formatDate = (dateStr) => {
@@ -22,10 +22,15 @@ export default function NoteCard({ note, onClick, onToggleFavorite, onDelete }) 
     });
   };
 
+  const handleCardClick = () => {
+    if (onClick) onClick(note);
+    else if (onSelect) onSelect(note);
+  };
+
   return (
     <div 
       className="glass-panel glass-panel-hover"
-      onClick={onClick}
+      onClick={handleCardClick}
       style={{
         padding: '20px',
         display: 'flex',
@@ -68,7 +73,7 @@ export default function NoteCard({ note, onClick, onToggleFavorite, onDelete }) 
             }}
             onClick={(e) => {
               e.stopPropagation();
-              onToggleFavorite(note.id);
+              if (onToggleFavorite) onToggleFavorite(note.id, !isFav);
             }}
             title={isFav ? "Unfavorite" : "Favorite"}
           >
@@ -141,7 +146,7 @@ export default function NoteCard({ note, onClick, onToggleFavorite, onDelete }) 
             style={{ color: 'var(--text-dim)', padding: '4px' }}
             onClick={(e) => {
               e.stopPropagation();
-              onDelete(note.id);
+              if (onDelete) onDelete(note.id);
             }}
             title="Delete Note"
           >

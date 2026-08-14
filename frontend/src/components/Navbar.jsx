@@ -1,18 +1,38 @@
 import React, { useState } from 'react';
-import { Sparkles, Key, FileText, Check, X } from 'lucide-react';
+import { Sparkles, Key, FileText, Check, X, RefreshCw } from 'lucide-react';
 
-export default function Navbar({ onNewNote, onNewUpload, stats, showToast }) {
+export default function Navbar({ 
+  onNewNote, 
+  onOpenManualNote, 
+  onNewUpload, 
+  onOpenUpload, 
+  stats, 
+  showToast,
+  backendOnline,
+  onRefresh,
+  refreshing 
+}) {
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
+
+  const handleOpenNote = () => {
+    if (onNewNote) onNewNote();
+    else if (onOpenManualNote) onOpenManualNote();
+  };
+
+  const handleOpenUpload = () => {
+    if (onNewUpload) onNewUpload();
+    else if (onOpenUpload) onOpenUpload();
+  };
 
   const handleSaveKey = () => {
     const trimmed = apiKey.trim();
     if (trimmed) {
       localStorage.setItem('gemini_api_key', trimmed);
-      showToast('Gemini API Key saved! Handwriting transcription enabled.', 'success');
+      if (showToast) showToast('Gemini API Key saved! Handwriting transcription enabled.', 'success');
     } else {
       localStorage.removeItem('gemini_api_key');
-      showToast('Gemini API Key removed. Using local OCR engine.', 'info');
+      if (showToast) showToast('Gemini API Key removed. Using local OCR engine.', 'info');
     }
     setShowKeyModal(false);
   };
@@ -26,13 +46,15 @@ export default function Navbar({ onNewNote, onNewUpload, stats, showToast }) {
       backdropFilter: 'blur(16px)',
       position: 'sticky',
       top: 0,
-      zIndex: 100
+      zIndex: 100,
+      marginBottom: '20px'
     }}>
       <div className="container" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: '70px'
+        height: '70px',
+        padding: '0'
       }}>
         {/* Brand */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -65,20 +87,39 @@ export default function Navbar({ onNewNote, onNewUpload, stats, showToast }) {
 
         {/* Actions */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {onRefresh && (
+            <button
+              className="btn btn-ghost btn-icon"
+              onClick={onRefresh}
+              title="Refresh notes from SQLite"
+              disabled={refreshing}
+            >
+              <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+            </button>
+          )}
+
           <button 
             className="btn btn-secondary btn-sm"
             onClick={() => setShowKeyModal(true)}
             style={{ borderColor: hasKey ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)' }}
           >
             <Key size={14} color={hasKey ? '#34d399' : 'currentColor'} />
-            <span>{hasKey ? 'Gemini Free Tier (Active)' : 'Set Free Gemini Key'}</span>
+            <span>{hasKey ? 'Gemini Free Key (Active)' : 'Set Free Gemini Key'}</span>
           </button>
 
-          <button className="btn btn-secondary btn-sm" onClick={onNewNote}>
+          <button 
+            id="btn-add-text-note"
+            className="btn btn-secondary btn-sm" 
+            onClick={handleOpenNote}
+          >
             + Text Note
           </button>
 
-          <button className="btn btn-primary btn-sm" onClick={onNewUpload}>
+          <button 
+            id="btn-transcribe-photo"
+            className="btn btn-primary btn-sm" 
+            onClick={handleOpenUpload}
+          >
             <Sparkles size={15} />
             <span>Transcribe Photo</span>
           </button>

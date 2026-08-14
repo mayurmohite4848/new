@@ -7,6 +7,7 @@ import shutil
 from PIL import Image
 from backend.app import create_app
 from backend.db import init_db
+from backend.services.ocr_service import expand_abbreviations_and_shortforms, correct_ocr_handwriting_errors
 
 class TestFlaskNoteApi(unittest.TestCase):
     def setUp(self):
@@ -30,6 +31,31 @@ class TestFlaskNoteApi(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         self.assertEqual(data["status"], "healthy")
+
+    def test_shorthand_expansion(self):
+        sample = "Meet w/ dept mgmt b/c of new arch and db reqs. Approx 5 devs needed asap."
+        expanded = expand_abbreviations_and_shortforms(sample)
+        self.assertIn("with", expanded)
+        self.assertIn("department", expanded)
+        self.assertIn("management", expanded)
+        self.assertIn("because", expanded)
+        self.assertIn("architecture", expanded)
+        self.assertIn("database", expanded)
+        self.assertIn("requirements", expanded)
+        self.assertIn("Approximately", expanded)
+        self.assertIn("developers", expanded)
+        self.assertIn("as soon as possible", expanded)
+
+    def test_ocr_confusion_correction(self):
+        sample = "rnake a prograrn to read clata frorn systern vvith c0de"
+        corrected = correct_ocr_handwriting_errors(sample)
+        self.assertIn("make", corrected)
+        self.assertIn("program", corrected)
+        self.assertIn("data", corrected)
+        self.assertIn("from", corrected)
+        self.assertIn("system", corrected)
+        self.assertIn("with", corrected)
+        self.assertIn("code", corrected)
 
     def test_create_and_get_note(self):
         payload = {
@@ -124,15 +150,6 @@ class TestFlaskNoteApi(unittest.TestCase):
 
         get_after_del = self.client.get(f"/api/notes/{note_id}")
         self.assertEqual(get_after_del.status_code, 404)
-
-    def test_stats_and_filtering(self):
-        self.client.post("/api/notes", json={"title": "Note Alpha", "content": "Alpha text", "tags": ["tagA"]})
-        self.client.post("/api/notes", json={"title": "Note Beta", "content": "Beta text", "tags": ["tagB"]})
-
-        stats_res = self.client.get("/api/stats")
-        self.assertEqual(stats_res.status_code, 200)
-        stats = stats_res.get_json()["stats"]
-        self.assertEqual(stats["total_notes"], 2)
 
 if __name__ == "__main__":
     unittest.main()

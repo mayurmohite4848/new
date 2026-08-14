@@ -11,7 +11,9 @@ import {
   Tag, 
   Eye, 
   Image as ImageIcon,
-  BookOpen
+  BookOpen,
+  Wand2,
+  FileText
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -26,7 +28,7 @@ export default function MultiNoteSplitReview({
         id: `seg-${idx}-${Date.now()}`,
         title: s.title || `Note Part ${idx + 1}`,
         content: s.content || '',
-        extracted_text: s.extracted_text || '',
+        raw_text: s.raw_text || s.content || '',
         handwriting_style: s.handwriting_style || 'font-caveat',
         tags: s.tags || ['white-canvas', 'handwritten'],
         segment_index: idx
@@ -35,7 +37,7 @@ export default function MultiNoteSplitReview({
         id: `seg-0-${Date.now()}`,
         title: draftData?.title || 'Extracted Note',
         content: draftData?.content || '',
-        extracted_text: draftData?.extracted_text || '',
+        raw_text: draftData?.extracted_text || draftData?.content || '',
         handwriting_style: 'font-caveat',
         tags: draftData?.tags || ['white-canvas', 'handwritten'],
         segment_index: 0
@@ -45,6 +47,7 @@ export default function MultiNoteSplitReview({
   const [saving, setSaving] = useState(false);
   const [tagInputs, setTagInputs] = useState({});
   const [previewMode, setPreviewMode] = useState('clean'); // 'clean' | 'raw'
+  const [decipherMode, setDecipherMode] = useState('expanded'); // 'expanded' | 'raw'
 
   const cleanedImageUrl = draftData?.cleaned_image_url;
   const rawImageUrl = draftData?.image_url;
@@ -90,7 +93,7 @@ export default function MultiNoteSplitReview({
       id: `seg-custom-${Date.now()}`,
       title: `Additional Topic ${notes.length + 1}`,
       content: '',
-      extracted_text: '',
+      raw_text: '',
       handwriting_style: 'font-caveat',
       tags: ['white-canvas', 'custom-split'],
       segment_index: notes.length
@@ -101,7 +104,6 @@ export default function MultiNoteSplitReview({
   const handleSaveAll = async () => {
     if (notes.length === 0) return;
 
-    // Validate titles
     const emptyTitle = notes.find(n => !n.title.trim());
     if (emptyTitle) {
       showToast('All notes must have a title.', 'error');
@@ -113,7 +115,7 @@ export default function MultiNoteSplitReview({
       const payloadNotes = notes.map((n, idx) => ({
         title: n.title.trim(),
         content: n.content.trim(),
-        extracted_text: n.extracted_text || n.content.trim(),
+        extracted_text: n.content.trim(),
         image_filename: draftData.image_filename,
         image_path: draftData.image_url,
         cleaned_image_filename: draftData.cleaned_image_filename,
@@ -170,16 +172,16 @@ export default function MultiNoteSplitReview({
             <Layers size={18} color="#ffffff" />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--text-main)' }}>
                 Review & Split: Identified {notes.length} Note Topics
               </h2>
               <span className="tag-badge" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#6ee7b7', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
-                PyTorch OCR Verified
+                ✨ Shorthands & Shortforms Deciphered
               </span>
             </div>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Review the detected note topics below, edit titles/content or adjust handwriting fonts, and save all to SQLite.
+              Handwritten abbreviations (e.g., w/, b/c, mgmt, arch, db) have been automatically expanded and reconstructed.
             </p>
           </div>
         </div>
@@ -199,7 +201,7 @@ export default function MultiNoteSplitReview({
         </div>
       </div>
 
-      {/* Main Split Layout: Left Image vs Right Note Cards */}
+      {/* Main Split Layout */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(280px, 360px) 1fr',
@@ -262,6 +264,18 @@ export default function MultiNoteSplitReview({
               alt="Source Scan"
               style={{ maxWidth: '100%', maxHeight: '310px', objectFit: 'contain' }}
             />
+          </div>
+
+          {/* Decipher Helper Banner */}
+          <div style={{
+            padding: '12px',
+            borderRadius: 'var(--radius-sm)',
+            background: 'rgba(99, 102, 241, 0.1)',
+            border: '1px solid rgba(99, 102, 241, 0.2)',
+            fontSize: '0.78rem',
+            color: '#c7d2fe'
+          }}>
+            <strong>💡 Handwriting Disambiguation Active:</strong> Difficult handwriting strokes and technical shortforms were disambiguated into clear, full words.
           </div>
 
           {/* Minimal AI Insights Pill */}

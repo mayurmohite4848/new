@@ -3,8 +3,8 @@ import {
   UploadCloud, 
   Sparkles, 
   X, 
-  Layers,
-  ArrowRight
+  FileText,
+  Key
 } from 'lucide-react';
 import MultiNoteSplitReview from './MultiNoteSplitReview';
 import { api } from '../services/api';
@@ -14,8 +14,6 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [processing, setProcessing] = useState(false);
-  
-  // Extraction result state
   const [extractionDraft, setExtractionDraft] = useState(null);
 
   const fileInputRef = useRef(null);
@@ -74,9 +72,9 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
       
       setExtractionDraft(draft);
       const count = draft.segmented_notes ? draft.segmented_notes.length : 1;
-      showToast(`Handwriting identified! Ready to review ${count} note topic(s).`, 'success');
+      showToast(`Transcribed! Ready to review ${count} plain text note(s).`, 'success');
     } catch (err) {
-      showToast(err.message || 'Failed to process image.', 'error');
+      showToast(err.message || 'Failed to transcribe image.', 'error');
     } finally {
       setProcessing(false);
     }
@@ -89,14 +87,14 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
     setExtractionDraft(null);
   };
 
-  // If extraction draft is ready, render the MultiNoteSplitReview stage!
+  const hasApiKey = !!localStorage.getItem('gemini_api_key');
+
   if (extractionDraft) {
     return (
       <MultiNoteSplitReview
         draftData={extractionDraft}
         onNotesCreated={(createdNotes) => {
           if (onNoteCreated) {
-            // Trigger refresh for all created notes
             createdNotes.forEach(n => onNoteCreated(n));
           }
           resetState();
@@ -112,7 +110,7 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
     <div className="glass-panel" style={{
       padding: '24px',
       marginBottom: '32px',
-      border: '1px solid rgba(99, 102, 241, 0.25)',
+      border: '1px solid var(--border-accent)',
       boxShadow: 'var(--shadow-md)',
       position: 'relative'
     }}>
@@ -128,19 +126,19 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
             width: '34px',
             height: '34px',
             borderRadius: '10px',
-            background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+            background: 'linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center'
           }}>
-            <Sparkles size={17} color="#ffffff" />
+            <FileText size={18} color="#ffffff" />
           </div>
           <div>
             <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-main)' }}>
-              PyTorch Handwriting OCR & Multi-Note Extractor
+              Transcribe Photo into Plain Text Notes
             </h2>
             <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-              Identifies text/handwriting from photos, splits topics, and creates structured notes on pure white canvas.
+              Upload handwritten pages, whiteboards, or documents to transcribe into clean plain text notes.
             </p>
           </div>
         </div>
@@ -225,10 +223,10 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
               </div>
               <div>
                 <p style={{ fontSize: '0.98rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                  Drop whiteboard or handwritten photo here, or <span style={{ color: 'var(--accent-primary)' }}>browse</span>
+                  Drop handwritten photo or document here, or <span style={{ color: 'var(--accent-primary)' }}>browse</span>
                 </p>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginTop: '4px' }}>
-                  Background will be removed to pure white and split into reviewable notes
+                  {hasApiKey ? '✨ Gemini Flash Vision active for high-accuracy plain text transcription' : 'Using local OCR engine (or set a free Gemini Key in top right for 99% accuracy)'}
                 </p>
               </div>
             </>
@@ -250,11 +248,11 @@ export default function ImageUploader({ onNoteCreated, showToast, onClose }) {
               disabled={processing}
             >
               {processing ? (
-                <span className="animate-pulse-subtle">Identifying Handwriting & Splitting Topics...</span>
+                <span className="animate-pulse-subtle">Transcribing Handwriting into Plain Text...</span>
               ) : (
                 <>
                   <Sparkles size={16} />
-                  <span>Identify Text & Split into Notes</span>
+                  <span>Transcribe to Plain Text</span>
                 </>
               )}
             </button>

@@ -38,7 +38,7 @@ export const api = {
     return request(`/api/notes/${id}`);
   },
 
-  // Create single manual or text note
+  // Create single note
   async createNote(noteData) {
     return request('/api/notes', {
       method: 'POST',
@@ -47,7 +47,7 @@ export const api = {
     });
   },
 
-  // Batch create multiple notes (from Review & Split workflow)
+  // Batch create multiple plain-text notes
   async batchCreateNotes(notesArray) {
     return request('/api/notes/batch', {
       method: 'POST',
@@ -72,14 +72,14 @@ export const api = {
     });
   },
 
-  // Trigger minimal AI enhancements for a note
+  // Trigger minimal AI insights for a note
   async enhanceNoteAI(id) {
     return request(`/api/notes/${id}/enhance-ai`, {
       method: 'POST'
     });
   },
 
-  // Upload image, remove background onto white canvas & extract metadata/text
+  // Upload original image and transcribe to plain text
   async uploadImage(file, { autoSave = false, title = '', content = '' } = {}) {
     const formData = new FormData();
     formData.append('file', file);
@@ -87,8 +87,15 @@ export const api = {
     if (title) formData.append('title', title);
     if (content) formData.append('content', content);
 
+    const headers = {};
+    const apiKey = localStorage.getItem('gemini_api_key');
+    if (apiKey) {
+      headers['X-Gemini-Key'] = apiKey;
+    }
+
     return request('/api/upload', {
       method: 'POST',
+      headers,
       body: formData
     });
   },

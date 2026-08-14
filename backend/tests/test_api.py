@@ -57,48 +57,43 @@ class TestFlaskNoteApi(unittest.TestCase):
         self.assertIn("with", corrected)
         self.assertIn("code", corrected)
 
-    def test_create_and_get_note(self):
+    def test_create_and_get_plain_text_note(self):
         payload = {
-            "title": "Test SQLite Note",
-            "content": "This is a unit test note content.",
-            "extracted_text": "Extracted sample text",
-            "handwriting_style": "caveat",
+            "title": "Plain Text Meeting Note",
+            "content": "Discussed system architecture and next sprint items.",
+            "extracted_text": "Discussed system architecture and next sprint items.",
             "ai_insights": {
-                "core_concept": "Unit Testing",
+                "core_concept": "Sprint Planning",
                 "key_takeaways": ["Point 1", "Point 2"]
             },
-            "tags": ["testing", "sqlite"],
+            "tags": ["sprint", "meeting"],
             "is_favorite": True
         }
         res = self.client.post("/api/notes", json=payload)
         self.assertEqual(res.status_code, 201)
         created_note = res.get_json()["note"]
-        self.assertEqual(created_note["title"], "Test SQLite Note")
+        self.assertEqual(created_note["title"], "Plain Text Meeting Note")
         self.assertTrue(created_note["is_favorite"])
-        self.assertEqual(created_note["handwriting_style"], "caveat")
-        self.assertIsNotNone(created_note["ai_insights"])
         note_id = created_note["id"]
 
         get_res = self.client.get(f"/api/notes/{note_id}")
         self.assertEqual(get_res.status_code, 200)
         retrieved = get_res.get_json()["note"]
-        self.assertEqual(retrieved["title"], "Test SQLite Note")
-        self.assertIn("testing", retrieved["tags"])
+        self.assertEqual(retrieved["title"], "Plain Text Meeting Note")
+        self.assertIn("sprint", retrieved["tags"])
 
     def test_batch_create_notes(self):
         payload = {
             "notes": [
                 {
                     "title": "Topic 1: Overview",
-                    "content": "Overview of handwriting segmentation pipeline.",
-                    "tags": ["architecture", "pytorch"],
-                    "handwriting_style": "font-caveat"
+                    "content": "Overview of system design.",
+                    "tags": ["architecture"]
                 },
                 {
                     "title": "Topic 2: Action Items",
-                    "content": "1. Deploy PyTorch OCR model\n2. Verify batch SQLite inserts",
-                    "tags": ["action-items"],
-                    "handwriting_style": "font-kalam"
+                    "content": "1. Deploy plain text notes\n2. Verify SQLite inserts",
+                    "tags": ["action-items"]
                 }
             ]
         }
@@ -110,7 +105,7 @@ class TestFlaskNoteApi(unittest.TestCase):
         self.assertEqual(resp_json["notes"][0]["title"], "Topic 1: Overview")
         self.assertEqual(resp_json["notes"][1]["title"], "Topic 2: Action Items")
 
-    def test_upload_image_clean_white_and_segmentation(self):
+    def test_upload_image_and_plain_text_extraction(self):
         img_byte_arr = io.BytesIO()
         img = Image.new("RGB", (300, 200), color="#f0e6d2")
         from PIL import ImageDraw
@@ -121,7 +116,7 @@ class TestFlaskNoteApi(unittest.TestCase):
         img_byte_arr.seek(0)
 
         data = {
-            "file": (img_byte_arr, "sample_meeting_notes.png"),
+            "file": (img_byte_arr, "sample_plain_meeting.png"),
             "auto_save": "false"
         }
 
@@ -139,7 +134,6 @@ class TestFlaskNoteApi(unittest.TestCase):
 
         update_res = self.client.put(f"/api/notes/{note_id}", json={
             "title": "Updated Title",
-            "handwriting_style": "kalam",
             "is_favorite": True
         })
         self.assertEqual(update_res.status_code, 200)

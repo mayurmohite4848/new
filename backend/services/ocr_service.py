@@ -1,10 +1,12 @@
 import os
 import re
-from PIL import Image, ImageEnhance, ImageFilter
+import io
+import json
+from PIL import Image
 
 _EASYOCR_READER = None
 
-# Comprehensive dictionary for common handwritten, technical, and academic abbreviations
+# Common English shorthand dictionary for local fallback
 SHORTHAND_WORDS = {
     'w/': 'with',
     'w/o': 'without',
@@ -71,9 +73,7 @@ SHORTHAND_WORDS = {
     'max': 'maximum'
 }
 
-# Common OCR confusion words where characters were misread
 COMMON_OCR_WORD_CORRECTIONS = {
-    # "rn" -> "m"
     r'\brnake\b': 'make',
     r'\brnade\b': 'made',
     r'\bfrorn\b': 'from',
@@ -93,7 +93,6 @@ COMMON_OCR_WORD_CORRECTIONS = {
     r'\btirne\b': 'time',
     r'\bsurn\b': 'sum',
     r'\brnost\b': 'most',
-    # "cl" -> "d"
     r'\bclata\b': 'data',
     r'\bclatabase\b': 'database',
     r'\bclraw\b': 'draw',
@@ -101,7 +100,6 @@ COMMON_OCR_WORD_CORRECTIONS = {
     r'\bclrive\b': 'drive',
     r'\bclocument\b': 'document',
     r'\bcletail\b': 'detail',
-    # "vv" -> "w"
     r'\bvvith\b': 'with',
     r'\bvvork\b': 'work',
     r'\bvvrite\b': 'write',
@@ -122,47 +120,11 @@ def get_ocr_reader():
             _EASYOCR_READER = False
     return _EASYOCR_READER if _EASYOCR_READER is not False else None
 
-def preprocess_handwriting_image(image_path):
-    """
-    Applies multi-scale upsampling and contrast sharpening to clarify
-    cursive loops, thin pencil/pen strokes, and messy ligatures for OCR.
-    """
-    try:
-        with Image.open(image_path) as img:
-            rgb_img = img.convert('RGB')
-
-            # Upscale small images if width or height < 1200px
-            if rgb_img.width < 1200 or rgb_img.height < 1200:
-                scale_factor = min(2.0, 1600.0 / max(rgb_img.width, rgb_img.height))
-                new_w = int(rgb_img.width * scale_factor)
-                new_h = int(rgb_img.height * scale_factor)
-                rgb_img = rgb_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-            # Enhance stroke sharpness
-            enhancer = ImageEnhance.Sharpness(rgb_img)
-            sharpened = enhancer.enhance(1.6)
-
-            # Enhance contrast slightly to distinguish ink from paper
-            contrast_enhancer = ImageEnhance.Contrast(sharpened)
-            enhanced = contrast_enhancer.enhance(1.25)
-
-            base_dir = os.path.dirname(image_path)
-            preprocessed_path = os.path.join(base_dir, f"prep_{os.path.basename(image_path)}")
-            enhanced.save(preprocessed_path, format='PNG')
-            return preprocessed_path
-    except Exception as e:
-        print(f"Preprocessing warning: {e}")
-        return image_path
-
 def correct_ocr_handwriting_errors(text):
-    """
-    Repairs common character confusion errors found in messy handwritten OCR.
-    """
+    """Repairs common character confusion errors in OCR output."""
     if not text:
         return ""
-
     result = text
-
     for pattern, replacement in COMMON_OCR_WORD_CORRECTIONS.items():
         def replace_with_case(match):
             matched = match.group(0)
@@ -171,30 +133,20 @@ def correct_ocr_handwriting_errors(text):
             elif matched[0].isupper():
                 return replacement.capitalize()
             return replacement
-
         result = re.sub(pattern, replace_with_case, result, flags=re.IGNORECASE)
 
-    # Fix digit/letter mixups inside words (e.g. "c0de" -> "code", "n0te" -> "note")
     result = re.sub(r'([a-zA-Z])0([a-zA-Z])', r'\g<1>o\g<2>', result)
     result = re.sub(r'([a-zA-Z])1([a-zA-Z])', r'\g<1>l\g<2>', result)
-
-    # Fix spaced contractions like "don ' t" -> "don't"
     result = re.sub(r'([a-zA-Z]+)\s*[\'’`]\s*([a-zA-Z]+)', r"\1'\2", result)
     result = re.sub(r'[ \t]+', ' ', result)
-
     return result
 
 def expand_abbreviations_and_shortforms(text):
-    """
-    Expands common handwritten shortforms and abbreviations to full clear English,
-    preserving exact punctuation, linebreaks, and token capitalization.
-    """
+    """Expands common handwritten shortforms and abbreviations to full clear English."""
     if not text:
         return ""
-
     tokens = re.split(r'(\s+|[.,!?;:\(\)\[\]\{\}"\'])', text)
     result = []
-
     for token in tokens:
         token_clean = token.strip()
         token_lower = token_clean.lower()
@@ -207,57 +159,94 @@ def expand_abbreviations_and_shortforms(text):
             result.append(expansion)
         else:
             result.append(token)
-
     return "".join(result)
 
-def extract_handwriting_text(image_path):
+def transcribe_with_gemini(image_path, api_key=None):
     """
-    Transcribes handwritten & printed text using PyTorch EasyOCR,
-    followed by multi-stage error correction and shorthand expansion.
+    Transcribes handwritten/printed text from image using Gemini 2.0 / 1.5 Flash (Free Tier).
+    Understands cursive, messy penmanship, technical diagrams, and expands shorthand.
     """
-    prepped_path = preprocess_handwriting_image(image_path)
-    target_path = prepped_path if os.path.exists(prepped_path) else image_path
+    key = api_key or os.environ.get("GEMINI_API_KEY")
+    if not key:
+        return None
 
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=key)
+
+        prompt = (
+            "You are an expert handwriting transcription assistant.\n"
+            "Carefully transcribe all handwritten and printed English text from this image into clear, accurate plain text.\n"
+            "Rules:\n"
+            "1. Accurately decipher cursive, messy handwriting, and abbreviations.\n"
+            "2. Preserve the logical structure, headings, bullet points, and numbered lists.\n"
+            "3. If words are abbreviated (e.g. w/, b/c, mgmt, reqs), expand them or keep clear context.\n"
+            "4. Return ONLY the transcribed plain text notes without conversational filler."
+        )
+
+        with open(image_path, "rb") as f:
+            image_bytes = f.read()
+
+        # Determine MIME type
+        ext = os.path.splitext(image_path)[1].lower().replace('.', '')
+        mime_type = "image/jpeg" if ext in ("jpg", "jpeg") else (f"image/{ext}" if ext else "image/jpeg")
+
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                prompt
+            ]
+        )
+
+        if response and response.text:
+            return response.text.strip()
+    except Exception as e:
+        print(f"Gemini Vision API error (falling back to local): {e}")
+
+    return None
+
+def extract_handwriting_text(image_path, api_key=None):
+    """
+    Primary handwriting transcription engine.
+    Tries Gemini Flash Vision first (if API key available), then falls back to local PyTorch OCR + NLP expander.
+    """
+    # 1. Try Gemini Flash Vision if key is provided
+    gemini_text = transcribe_with_gemini(image_path, api_key)
+    if gemini_text:
+        return gemini_text
+
+    # 2. Local PyTorch EasyOCR Fallback
     raw_text = ""
     reader = get_ocr_reader()
-
     if reader:
         try:
-            results = reader.readtext(target_path, detail=0, paragraph=True)
+            results = reader.readtext(image_path, detail=0, paragraph=True)
             if results:
                 raw_text = "\n\n".join([r.strip() for r in results if r.strip()])
         except Exception as e:
-            print(f"EasyOCR extraction error: {e}")
+            print(f"Local OCR error: {e}")
 
-    # Fallback to pytesseract if EasyOCR didn't find text
     if not raw_text:
         try:
             import pytesseract
-            with Image.open(target_path) as img:
+            with Image.open(image_path) as img:
                 raw_text = pytesseract.image_to_string(img).strip()
-        except Exception:
-            pass
-
-    if prepped_path != image_path and os.path.exists(prepped_path):
-        try:
-            os.remove(prepped_path)
         except Exception:
             pass
 
     if not raw_text:
         return ""
 
-    # Stage 1: Correct OCR character errors
-    corrected_text = correct_ocr_handwriting_errors(raw_text)
-
-    # Stage 2: Expand shortforms & abbreviations
-    fully_expanded_text = expand_abbreviations_and_shortforms(corrected_text)
-
-    return fully_expanded_text
+    # Correct common errors & expand shorthands
+    corrected = correct_ocr_handwriting_errors(raw_text)
+    return expand_abbreviations_and_shortforms(corrected)
 
 def segment_text_into_notes(extracted_text, original_filename="", metadata=None):
     """
-    Analyzes expanded text and segments it into multiple distinct, structured notes.
+    Analyzes plain text and segments it into multiple distinct, structured notes.
     """
     text = (extracted_text or "").strip()
     clean_base = os.path.splitext(original_filename)[0].replace('_', ' ').replace('-', ' ').title() if original_filename else "Extracted Note"
@@ -265,11 +254,8 @@ def segment_text_into_notes(extracted_text, original_filename="", metadata=None)
     if not text:
         return [{
             "title": clean_base,
-            "content": f"Handwritten notes digitized from {original_filename or 'image'}.\n\nCleaned onto pure white canvas. Add your annotations here.",
-            "raw_text": "",
-            "extracted_text": "",
-            "tags": ["white-canvas", "handwritten"],
-            "handwriting_style": "font-caveat",
+            "content": f"Notes extracted from {original_filename or 'image'}.\n\nAdd your annotations here.",
+            "tags": ["plain-text", "extracted"],
             "segment_index": 0
         }]
 
@@ -295,27 +281,19 @@ def segment_text_into_notes(extracted_text, original_filename="", metadata=None)
 
             content_body = "\n".join(lines[1:]) if len(lines) > 1 else lines[0]
 
-            tags = ["handwritten", "white-canvas"]
+            tags = ["notes"]
             lower_b = block_clean.lower()
-            style = "font-caveat"
-
             if any(k in lower_b for k in ["action", "todo", "task", "assign"]):
                 tags.append("action-items")
-                style = "font-kalam"
-            elif any(k in lower_b for k in ["architecture", "diagram", "system", "design", "flow", "database", "api"]):
+            elif any(k in lower_b for k in ["architecture", "system", "design", "database", "api"]):
                 tags.append("architecture")
-                style = "font-architect"
             elif any(k in lower_b for k in ["summary", "key", "takeaway", "conclusion"]):
                 tags.append("summary")
-                style = "font-caveat"
 
             notes.append({
                 "title": candidate_title.title(),
                 "content": content_body or block_clean,
-                "raw_text": block_clean,
-                "extracted_text": block_clean,
                 "tags": list(set(tags)),
-                "handwriting_style": style,
                 "segment_index": idx
             })
 
@@ -329,10 +307,7 @@ def segment_text_into_notes(extracted_text, original_filename="", metadata=None)
         notes.append({
             "title": first_title.title() if first_title else clean_base,
             "content": text,
-            "raw_text": text,
-            "extracted_text": text,
-            "tags": ["handwritten", "white-canvas"],
-            "handwriting_style": "font-caveat",
+            "tags": ["notes"],
             "segment_index": 0
         })
 

@@ -1,77 +1,54 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Star, 
   Trash2, 
+  Sparkles, 
   Save, 
+  Tag, 
   Calendar, 
-  Copy, 
-  Check, 
-  Download, 
-  Layers, 
-  Tag as TagIcon,
-  FileText,
-  ExternalLink,
-  Edit3,
-  Sparkles,
+  Clock, 
   Image as ImageIcon,
-  BookOpen
+  Copy,
+  Check,
+  FileText
 } from 'lucide-react';
-import WhiteboardNoteCanvas from './WhiteboardNoteCanvas';
 import { api } from '../services/api';
 
-export default function NoteModal({ 
-  note, 
-  onClose, 
-  onNoteUpdated, 
-  onNoteDeleted, 
-  showToast 
-}) {
-  const [activeTab, setActiveTab] = useState('sheet'); // 'sheet' | 'ink' | 'ai' | 'original' | 'meta'
-  const [isEditing, setIsEditing] = useState(false);
-  const [title, setTitle] = useState(note?.title || '');
-  const [content, setContent] = useState(note?.content || '');
-  const [extractedText, setExtractedText] = useState(note?.extracted_text || '');
-  const [handwritingStyle, setHandwritingStyle] = useState(note?.handwriting_style || 'font-caveat');
-  const [tags, setTags] = useState(note?.tags || []);
+export default function NoteModal({ noteId, onClose, onNoteUpdated, onDeleteNote, showToast }) {
+  const [note, setNote] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('notes'); // 'notes' | 'photo' | 'ai'
+  
+  // Edit mode state
+  const [title, setTitle] = useState('');
+  const [content, setContent] = useState('');
+  const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
-  const [isFavorite, setIsFavorite] = useState(note?.is_favorite || false);
+  const [isFavorite, setIsFavorite] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [enhancingAi, setEnhancingAi] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  if (!note) return null;
+  useEffect(() => {
+    fetchNoteDetail();
+  }, [noteId]);
 
-  const metadata = note.image_metadata || {};
-  const hasImage = Boolean(note.image_filename);
-  const rawImageUrl = note.image_filename ? `/api/uploads/${note.image_filename}` : null;
-  const cleanedImageUrl = note.cleaned_image_filename 
-    ? `/api/uploads/${note.cleaned_image_filename}` 
-    : rawImageUrl;
-
-  const handleCopyText = () => {
-    const textToCopy = extractedText || content || '';
-    if (textToCopy) {
-      navigator.clipboard.writeText(textToCopy);
-      setCopied(true);
-      if (showToast) showToast('Text copied to clipboard!', 'info');
-      setTimeout(() => setCopied(false), 2000);
+  const fetchNoteDetail = async () => {
+    setLoading(true);
+    try {
+      const res = await api.getNoteById(noteId);
+      const n = res.note;
+      setNote(n);
+      setTitle(n.title || '');
+      setContent(n.content || n.extracted_text || '');
+      setTags(n.tags || []);
+      setIsFavorite(!!n.is_favorite);
+    } catch (err) {
+      showToast(err.message || 'Failed to load note.', 'error');
+      onClose();
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const handleAddTag = (e) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      const val = tagInput.trim().replace(/^#/, '').toLowerCase();
-      if (val && !tags.includes(val)) {
-        setTags([...tags, val]);
-        setTagInput('');
-      }
-    }
-  };
-
-  const handleRemoveTag = (tagToRemove) => {
-    setTags(tags.filter(t => t !== tagToRemove));
   };
 
   const handleSave = async () => {
@@ -82,516 +59,309 @@ export default function NoteModal({
 
     setSaving(true);
     try {
-      const updated = await api.updateNote(note.id, {
+      const res = await api.updateNote(noteId, {
         title: title.trim(),
         content: content.trim(),
-        extracted_text: extractedText.trim(),
-        handwriting_style: handwritingStyle,
-        tags: tags,
+        tags,
         is_favorite: isFavorite
       });
-
+      setNote(res.note);
+      onNoteUpdated(res.note);
       showToast('Note saved successfully!', 'success');
-      setIsEditing(false);
-      if (onNoteUpdated) onNoteUpdated(updated.note);
     } catch (err) {
-      showToast(err.message || 'Failed to update note.', 'error');
+      showToast(err.message || 'Failed to save note.', 'error');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTriggerAiEnhance = async () => {
-    setEnhancingAi(true);
-    try {
-      const res = await api.enhanceNoteAI(note.id);
-      showToast('Minimal AI insights refreshed with zero cost!', 'success');
-      if (onNoteUpdated) onNoteUpdated(res.note);
-    } catch (err) {
-      showToast(err.message || 'Failed to enhance with AI.', 'error');
-    } finally {
-      setEnhancingAi(false);
+  const handleAddTag = (e) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const val = tagInput.trim().replace(/^#/, '').toLowerCase();
+      if (val && !tags.includes(val)) {
+        setTags([...tags, val]);
+      }
+      setTagInput('');
     }
   };
 
-  const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this note?')) return;
-    try {
-      await api.deleteNote(note.id);
-      showToast('Note deleted successfully.', 'info');
-      if (onNoteDeleted) onNoteDeleted(note.id);
-      onClose();
-    } catch (err) {
-      showToast(err.message || 'Failed to delete note.', 'error');
-    }
+  const handleRemoveTag = (tagToRemove) => {
+    setTags(tags.filter(t => t !== tagToRemove));
   };
+
+  const handleCopyText = () => {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    showToast('Text copied to clipboard!', 'info');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (loading) {
+    return (
+      <div className="modal-backdrop">
+        <div className="modal-content" style={{ padding: '40px', textAlign: 'center', maxWidth: '400px' }}>
+          <p style={{ color: 'var(--text-muted)' }}>Loading note...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!note) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-backdrop" onClick={onClose}>
       <div 
         className="modal-content"
         onClick={(e) => e.stopPropagation()}
         style={{
-          maxWidth: '1050px',
-          maxHeight: '94vh',
           display: 'flex',
-          flexDirection: 'column'
+          flexDirection: 'column',
+          maxHeight: '92vh'
         }}
       >
-        {/* Modal Header */}
+        {/* Header */}
         <div style={{
-          padding: '16px 24px',
-          borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          background: 'rgba(15, 23, 42, 0.95)',
-          flexWrap: 'wrap',
-          gap: '12px'
+          padding: '20px 24px',
+          borderBottom: '1px solid var(--border-subtle)',
+          gap: '16px',
+          flexWrap: 'wrap'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '240px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
             <button
-              onClick={() => {
-                setIsFavorite(!isFavorite);
-                if (!isEditing) {
-                  api.updateNote(note.id, { is_favorite: !isFavorite }).then(res => {
-                    if (onNoteUpdated) onNoteUpdated(res.note);
-                  });
-                }
-              }}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                color: isFavorite ? '#f59e0b' : 'var(--text-dim)',
-                padding: '2px'
-              }}
-              title={isFavorite ? 'Unfavorite' : 'Favorite'}
+              className="btn btn-ghost btn-icon"
+              style={{ color: isFavorite ? '#fbbf24' : 'var(--text-dim)' }}
+              onClick={() => setIsFavorite(!isFavorite)}
+              title={isFavorite ? "Unfavorite" : "Favorite"}
             >
-              <Star size={20} fill={isFavorite ? '#f59e0b' : 'none'} />
+              <Star size={20} fill={isFavorite ? '#fbbf24' : 'none'} />
             </button>
-
-            {isEditing ? (
-              <input
-                type="text"
-                className="input"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                style={{ fontSize: '1.1rem', fontWeight: 700 }}
-              />
-            ) : (
-              <h2 style={{
+            <input
+              type="text"
+              className="input"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Note Title..."
+              style={{
                 fontSize: '1.25rem',
                 fontWeight: 700,
-                color: 'var(--text-main)',
-                lineHeight: 1.3
-              }}>
-                {title}
-              </h2>
-            )}
+                background: 'transparent',
+                border: '1px solid transparent',
+                padding: '6px 8px'
+              }}
+            />
           </div>
 
-          {/* Quick Action Buttons */}
+          {/* Action buttons */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <button
+            <button 
               className="btn btn-secondary btn-sm"
-              onClick={handleTriggerAiEnhance}
-              disabled={enhancingAi}
-              title="Generate or refresh zero-cost minimal AI insights"
+              onClick={handleCopyText}
+              title="Copy plain text"
             >
-              <Sparkles size={14} color="#eab308" className={enhancingAi ? 'animate-pulse-subtle' : ''} />
-              <span>{enhancingAi ? 'Generating AI...' : 'Refresh AI'}</span>
+              {copied ? <Check size={14} color="#34d399" /> : <Copy size={14} />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
             </button>
 
-            {!isEditing ? (
-              <button 
-                className="btn btn-secondary btn-sm"
-                onClick={() => setIsEditing(true)}
-              >
-                <Edit3 size={14} />
-                <span>Edit Note</span>
-              </button>
-            ) : (
-              <button 
-                className="btn btn-primary btn-sm"
-                onClick={handleSave}
-                disabled={saving}
-              >
-                <Save size={14} />
-                <span>{saving ? 'Saving...' : 'Save'}</span>
-              </button>
-            )}
-
-            <button 
-              className="btn btn-danger btn-sm"
-              onClick={handleDelete}
-              title="Delete note"
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={handleSave}
+              disabled={saving}
             >
-              <Trash2 size={14} />
+              <Save size={14} />
+              <span>{saving ? 'Saving...' : 'Save'}</span>
             </button>
 
-            <button 
+            <button
+              className="btn btn-danger btn-sm btn-icon"
+              onClick={() => onDeleteNote(note.id)}
+              title="Delete Note"
+            >
+              <Trash2 size={16} />
+            </button>
+
+            <button
               className="btn btn-ghost btn-icon"
               onClick={onClose}
-              title="Close modal"
+              title="Close Modal"
             >
-              <X size={18} />
+              <X size={20} />
             </button>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
+        {/* Tab Navigation */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
+          gap: '8px',
           padding: '10px 24px',
-          background: 'rgba(11, 17, 33, 0.9)',
-          borderBottom: '1px solid var(--border-subtle)',
-          overflowX: 'auto'
+          background: 'rgba(15, 23, 42, 0.4)',
+          borderBottom: '1px solid var(--border-subtle)'
         }}>
           <button
-            className={`tab-btn ${activeTab === 'sheet' ? 'active' : ''}`}
-            onClick={() => setActiveTab('sheet')}
+            onClick={() => setActiveTab('notes')}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 'var(--radius-sm)',
+              border: 'none',
+              cursor: 'pointer',
+              fontSize: '0.84rem',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              background: activeTab === 'notes' ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+              color: activeTab === 'notes' ? '#ffffff' : 'var(--text-muted)'
+            }}
           >
-            <BookOpen size={14} />
-            <span>Clean White Note Sheet</span>
+            <FileText size={14} />
+            <span>Plain Text Note</span>
           </button>
 
-          {cleanedImageUrl && (
+          {note.image_path && (
             <button
-              className={`tab-btn ${activeTab === 'ink' ? 'active' : ''}`}
-              onClick={() => setActiveTab('ink')}
-            >
-              <Layers size={14} />
-              <span>Clean Inked Scan</span>
-            </button>
-          )}
-
-          <button
-            className={`tab-btn ${activeTab === 'ai' ? 'active' : ''}`}
-            onClick={() => setActiveTab('ai')}
-          >
-            <Sparkles size={14} color="#facc15" />
-            <span>Minimal AI Insights</span>
-          </button>
-
-          {rawImageUrl && (
-            <button
-              className={`tab-btn ${activeTab === 'original' ? 'active' : ''}`}
-              onClick={() => setActiveTab('original')}
+              onClick={() => setActiveTab('photo')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: activeTab === 'photo' ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+                color: activeTab === 'photo' ? '#ffffff' : 'var(--text-muted)'
+              }}
             >
               <ImageIcon size={14} />
               <span>Original Photo</span>
             </button>
           )}
 
-          <button
-            className={`tab-btn ${activeTab === 'meta' ? 'active' : ''}`}
-            onClick={() => setActiveTab('meta')}
-          >
-            <FileText size={14} />
-            <span>Metadata & Raw OCR</span>
-          </button>
+          {note.ai_insights && (
+            <button
+              onClick={() => setActiveTab('ai')}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 'var(--radius-sm)',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.84rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: activeTab === 'ai' ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
+                color: activeTab === 'ai' ? '#ffffff' : 'var(--text-muted)'
+              }}
+            >
+              <Sparkles size={14} />
+              <span>AI Takeaways</span>
+            </button>
+          )}
         </div>
 
-        {/* Modal Scrollable Body */}
-        <div style={{
-          padding: '24px',
-          overflowY: 'auto',
-          flex: 1,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '20px'
-        }}>
-          {isEditing && (
-            /* Editing Banner */
-            <div className="glass-panel" style={{
-              padding: '16px',
-              border: '1px solid var(--accent-primary)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '14px'
-            }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Handwritten Note Content (Editable)
-                </label>
-                <textarea
-                  className="textarea"
-                  style={{ minHeight: '140px' }}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                  Tags
-                </label>
-                <div style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px',
-                  background: 'var(--bg-input)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-md)'
-                }}>
-                  {tags.map(t => (
-                    <span key={t} className="tag-badge">
-                      #{t}
-                      <X 
-                        size={12} 
-                        style={{ cursor: 'pointer', marginLeft: '4px' }} 
-                        onClick={() => handleRemoveTag(t)}
-                      />
-                    </span>
-                  ))}
-                  <input
-                    type="text"
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    onKeyDown={handleAddTag}
-                    placeholder="Add tag and press Enter..."
-                    style={{
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#ffffff',
-                      outline: 'none',
-                      fontSize: '0.85rem',
-                      minWidth: '100px',
-                      flex: 1
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 1: Clean White Note Sheet (Default) */}
-          {activeTab === 'sheet' && (
-            <WhiteboardNoteCanvas
-              note={{
-                ...note,
-                title,
-                content,
-                extracted_text: extractedText,
-                handwriting_style: handwritingStyle,
-                tags
-              }}
-              onUpdateStyle={(newStyle) => {
-                setHandwritingStyle(newStyle);
-                api.updateNote(note.id, { handwriting_style: newStyle });
-              }}
-              showToast={showToast}
-            />
-          )}
-
-          {/* TAB 2: Clean Inked Scan on White Canvas */}
-          {activeTab === 'ink' && cleanedImageUrl && (
-            <div style={{
-              background: '#ffffff',
-              padding: '24px',
-              borderRadius: '12px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '16px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-            }}>
-              <div style={{
-                fontSize: '0.9rem',
-                color: '#334155',
-                fontWeight: 600,
-                textAlign: 'center'
-              }}>
-                Extracted Ink Strokes (Background Removed onto Pure White Canvas)
-              </div>
-              <img
-                src={cleanedImageUrl}
-                alt="Clean Inked Scan"
+        {/* Modal Body */}
+        <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+          {activeTab === 'notes' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-dim)' }}>
+                PLAIN TEXT CONTENT (EDITABLE):
+              </label>
+              <textarea
+                className="textarea"
                 style={{
-                  maxWidth: '100%',
-                  maxHeight: '520px',
-                  objectFit: 'contain'
+                  minHeight: '320px',
+                  fontFamily: 'var(--font-sans)',
+                  fontSize: '0.95rem',
+                  lineHeight: '1.7',
+                  padding: '16px'
                 }}
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Write or edit plain text notes here..."
               />
-              <a
-                href={cleanedImageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-secondary btn-sm"
-                style={{ color: '#0f172a', borderColor: '#cbd5e1' }}
-              >
-                <Download size={14} />
-                <span>Open Clean Inked PNG</span>
-              </a>
             </div>
           )}
 
-          {/* TAB 3: Minimal AI Insights */}
-          {activeTab === 'ai' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-              <div className="ai-sticky-note" style={{ transform: 'none', maxWidth: '100%' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: '12px',
-                  borderBottom: '1px dashed #ca8a04',
-                  paddingBottom: '8px'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, fontSize: '1rem' }}>
-                    <Sparkles size={18} color="#ca8a04" />
-                    <span>Minimal AI Supplementary Notes (Zero Cost)</span>
-                  </div>
-                  <span style={{ fontSize: '0.75rem', color: '#a16207', fontWeight: 600 }}>
-                    100% Local / Free
-                  </span>
-                </div>
-
-                {note.ai_insights?.core_concept && (
-                  <div style={{
-                    fontSize: '0.95rem',
-                    fontWeight: 700,
-                    marginBottom: '14px',
-                    background: 'rgba(255, 255, 255, 0.6)',
-                    padding: '8px 12px',
-                    borderRadius: '6px'
-                  }}>
-                    💡 Core Subject: {note.ai_insights.core_concept}
-                  </div>
-                )}
-
-                <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '6px' }}>
-                  Key Takeaways (Kept strictly minimal):
-                </div>
-                <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.9rem' }}>
-                  {(note.ai_insights?.key_takeaways || ['Note content extracted and indexed.']).map((pt, i) => (
-                    <li key={i}>{pt}</li>
-                  ))}
-                </ul>
-
-                {note.ai_insights?.diagram_data?.steps && (
-                  <div style={{
-                    marginTop: '16px',
-                    padding: '12px',
-                    background: 'rgba(255,255,255,0.7)',
-                    borderRadius: '8px'
-                  }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.82rem', color: '#854d0e', marginBottom: '8px' }}>
-                      Conceptual Flow / Outline:
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      {note.ai_insights.diagram_data.steps.map((st, idx) => (
-                        <span key={idx} style={{
-                          background: '#fef08a',
-                          padding: '4px 10px',
-                          borderRadius: '6px',
-                          border: '1px solid #ca8a04',
-                          fontWeight: 600,
-                          fontSize: '0.8rem'
-                        }}>
-                          {st}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* TAB 4: Original Photo */}
-          {activeTab === 'original' && rawImageUrl && (
+          {activeTab === 'photo' && note.image_path && (
             <div style={{
-              borderRadius: '12px',
-              overflow: 'hidden',
-              background: '#040711',
-              border: '1px solid var(--border-subtle)',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              padding: '16px',
-              gap: '12px'
+              gap: '12px',
+              background: '#040711',
+              padding: '20px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-subtle)'
             }}>
-              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                Original Raw Camera Upload
-              </div>
               <img
-                src={rawImageUrl}
-                alt="Original Upload"
-                style={{ maxWidth: '100%', maxHeight: '500px', objectFit: 'contain' }}
+                src={note.image_path}
+                alt="Original Photo"
+                style={{ maxWidth: '100%', maxHeight: '480px', objectFit: 'contain', borderRadius: '6px' }}
               />
-              <a
-                href={rawImageUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-secondary btn-sm"
-              >
-                <ExternalLink size={14} />
-                <span>Open Full Original File</span>
-              </a>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
+                Original Untouched Photo ({note.image_filename})
+              </span>
             </div>
           )}
 
-          {/* TAB 5: Metadata & Raw OCR */}
-          {activeTab === 'meta' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 360px) 1fr', gap: '20px' }}>
-              {/* Technical Table */}
-              <div className="glass-panel" style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.9rem' }}>
-                  📐 Image Properties
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  <span>Dimensions:</span>
-                  <strong style={{ color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>
-                    {metadata.width || 'N/A'} × {metadata.height || 'N/A'} px
-                  </strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  <span>Aspect Ratio:</span>
-                  <strong style={{ color: 'var(--text-main)' }}>{metadata.aspect_ratio || 'N/A'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  <span>Format:</span>
-                  <strong style={{ color: 'var(--text-main)' }}>{metadata.format || 'N/A'}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                  <span>Size:</span>
-                  <strong style={{ color: 'var(--text-main)' }}>{metadata.file_size_human || 'N/A'}</strong>
-                </div>
+          {activeTab === 'ai' && note.ai_insights && (
+            <div className="ai-summary-card">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, marginBottom: '10px', color: '#c7d2fe' }}>
+                <Sparkles size={16} />
+                <span>Concept: {note.ai_insights.core_concept || 'Extracted Note'}</span>
               </div>
-
-              {/* Raw OCR text */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                    Raw Extracted Text
-                  </label>
-                  <button className="btn btn-ghost btn-sm" onClick={handleCopyText}>
-                    {copied ? <Check size={13} color="#10b981" /> : <Copy size={13} />}
-                    <span>{copied ? 'Copied' : 'Copy'}</span>
-                  </button>
-                </div>
-                <div style={{
-                  padding: '14px',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'var(--bg-input)',
-                  border: '1px solid var(--border-subtle)',
-                  fontSize: '0.85rem',
-                  fontFamily: 'var(--font-mono)',
-                  color: 'var(--text-main)',
-                  whiteSpace: 'pre-wrap',
-                  minHeight: '160px'
-                }}>
-                  {extractedText || 'No OCR text extracted.'}
-                </div>
-              </div>
+              <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {(note.ai_insights.key_takeaways || []).map((pt, i) => (
+                  <li key={i} style={{ lineHeight: '1.5' }}>{pt}</li>
+                ))}
+              </ul>
             </div>
           )}
+        </div>
+
+        {/* Tags Footer */}
+        <div style={{
+          padding: '16px 24px',
+          borderTop: '1px solid var(--border-subtle)',
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+          gap: '8px',
+          background: 'rgba(15, 23, 42, 0.4)'
+        }}>
+          <Tag size={15} color="var(--text-dim)" />
+          {tags.map((t) => (
+            <span key={t} className="tag-badge">
+              #{t}
+              <X
+                size={12}
+                style={{ cursor: 'pointer', marginLeft: '4px' }}
+                onClick={() => handleRemoveTag(t)}
+              />
+            </span>
+          ))}
+          <input
+            type="text"
+            className="input"
+            style={{
+              width: '140px',
+              padding: '4px 8px',
+              fontSize: '0.8rem',
+              height: '28px'
+            }}
+            placeholder="+ Add tag..."
+            value={tagInput}
+            onChange={(e) => setTagInput(e.target.value)}
+            onKeyDown={handleAddTag}
+          />
         </div>
       </div>
     </div>

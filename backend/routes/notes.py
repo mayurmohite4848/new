@@ -53,11 +53,8 @@ def create_new_note():
     extracted_text = data.get("extracted_text")
     image_filename = data.get("image_filename")
     image_path = data.get("image_path")
-    cleaned_image_filename = data.get("cleaned_image_filename")
-    cleaned_image_path = data.get("cleaned_image_path")
     image_metadata = data.get("image_metadata")
     ai_insights = data.get("ai_insights")
-    handwriting_style = data.get("handwriting_style") or "caveat"
     source_image_filename = data.get("source_image_filename") or image_filename
     segment_index = data.get("segment_index", 0)
     tags = data.get("tags") or []
@@ -69,11 +66,8 @@ def create_new_note():
         extracted_text=extracted_text,
         image_filename=image_filename,
         image_path=image_path,
-        cleaned_image_filename=cleaned_image_filename,
-        cleaned_image_path=cleaned_image_path,
         image_metadata=image_metadata,
         ai_insights=ai_insights,
-        handwriting_style=handwriting_style,
         source_image_filename=source_image_filename,
         segment_index=segment_index,
         tags=tags,
@@ -97,7 +91,7 @@ def create_notes_batch():
     created_notes = batch_create_notes(notes_to_create)
 
     return jsonify({
-        "message": f"Successfully created {len(created_notes)} note(s) from image.",
+        "message": f"Successfully created {len(created_notes)} note(s).",
         "count": len(created_notes),
         "notes": created_notes
     }), 201
@@ -113,10 +107,7 @@ def update_existing_note(note_id):
     title = data.get("title")
     content = data.get("content")
     extracted_text = data.get("extracted_text")
-    cleaned_image_filename = data.get("cleaned_image_filename")
-    cleaned_image_path = data.get("cleaned_image_path")
     ai_insights = data.get("ai_insights")
-    handwriting_style = data.get("handwriting_style")
     tags = data.get("tags")
     is_favorite = data.get("is_favorite")
 
@@ -125,10 +116,7 @@ def update_existing_note(note_id):
         title=title,
         content=content,
         extracted_text=extracted_text,
-        cleaned_image_filename=cleaned_image_filename,
-        cleaned_image_path=cleaned_image_path,
         ai_insights=ai_insights,
-        handwriting_style=handwriting_style,
         tags=tags,
         is_favorite=is_favorite
     )
@@ -159,7 +147,7 @@ def trigger_ai_enhancement(note_id):
     )
 
     return jsonify({
-        "message": "Minimal AI insights generated.",
+        "message": "AI insights generated.",
         "ai_insights": insights,
         "note": updated
     }), 200
@@ -173,15 +161,14 @@ def remove_note(note_id):
 
     upload_folder = current_app.config.get("UPLOAD_FOLDER")
     if upload_folder:
-        for fn_key in ["image_filename", "cleaned_image_filename"]:
-            fn = deleted_note.get(fn_key)
-            if fn:
-                file_on_disk = os.path.join(upload_folder, fn)
-                if os.path.exists(file_on_disk):
-                    try:
-                        os.remove(file_on_disk)
-                    except Exception as e:
-                        current_app.logger.warning(f"Could not delete file {file_on_disk}: {e}")
+        fn = deleted_note.get("image_filename")
+        if fn:
+            file_on_disk = os.path.join(upload_folder, fn)
+            if os.path.exists(file_on_disk):
+                try:
+                    os.remove(file_on_disk)
+                except Exception as e:
+                    current_app.logger.warning(f"Could not delete file {file_on_disk}: {e}")
 
     return jsonify({
         "message": "Note deleted successfully.",
@@ -191,8 +178,8 @@ def remove_note(note_id):
 @notes_bp.route("/api/upload", methods=["POST"])
 def upload_image_and_process():
     """
-    Handles image uploads, runs PyTorch OCR, segments text into multi-note drafts,
-    and returns full preview data for the Review & Split workflow.
+    Handles image uploads, transcribes plain text (Gemini Flash Vision or local),
+    and segments into plain-text note drafts.
     """
     if "file" not in request.files:
         return jsonify({"error": "No image file part provided."}), 400
@@ -202,9 +189,10 @@ def upload_image_and_process():
         return jsonify({"error": "No file selected."}), 400
 
     upload_folder = current_app.config["UPLOAD_FOLDER"]
+    api_key = request.headers.get("X-Gemini-Key") or request.form.get("gemini_api_key")
 
     try:
-        processed = process_and_save_image(file, upload_folder)
+        processed = process_and_save_image(file, upload_folder, api_key=api_key)
     except ValueError as val_err:
         return jsonify({"error": str(val_err)}), 400
     except Exception as exc:
@@ -218,40 +206,33 @@ def upload_image_and_process():
         "extracted_text": processed["extracted_text"],
         "image_filename": processed["filename"],
         "image_url": f"/api/uploads/{processed['filename']}",
-        "cleaned_image_filename": processed["cleaned_filename"],
-        "cleaned_image_url": f"/api/uploads/{processed['cleaned_filename']}",
         "image_metadata": processed["metadata"],
         "ai_insights": processed["ai_insights"],
-        "handwriting_style": "caveat",
         "tags": processed["suggested_tags"],
         "segmented_notes": processed["segmented_notes"],
         "is_favorite": False
     }
 
     if auto_save:
-        # If auto_save requested, insert segmented notes or single note
         notes_to_insert = []
         if processed.get("segmented_notes") and len(processed["segmented_notes"]) > 1:
             for s in processed["segmented_notes"]:
                 notes_to_insert.append({
                     "title": s["title"],
                     "content": s["content"],
-                    "extracted_text": s.get("extracted_text", ""),
+                    "extracted_text": s.get("extracted_text", s.get("content", "")),
                     "image_filename": processed["filename"],
                     "image_path": f"/api/uploads/{processed['filename']}",
-                    "cleaned_image_filename": processed["cleaned_filename"],
-                    "cleaned_image_path": f"/api/uploads/{processed['cleaned_filename']}",
                     "image_metadata": processed["metadata"],
                     "ai_insights": processed["ai_insights"],
-                    "handwriting_style": s.get("handwriting_style", "caveat"),
-                    "tags": s.get("tags", ["handwritten", "white-canvas"]),
+                    "tags": s.get("tags", ["notes"]),
                     "source_image_filename": processed["filename"],
                     "segment_index": s.get("segment_index", 0),
                     "is_favorite": False
                 })
             saved_notes = batch_create_notes(notes_to_insert)
             return jsonify({
-                "message": f"Created {len(saved_notes)} notes from image.",
+                "message": f"Created {len(saved_notes)} plain text notes.",
                 "draft": draft_data,
                 "notes": saved_notes
             }), 201
@@ -262,11 +243,8 @@ def upload_image_and_process():
                 extracted_text=draft_data["extracted_text"],
                 image_filename=draft_data["image_filename"],
                 image_path=draft_data["image_url"],
-                cleaned_image_filename=draft_data["cleaned_image_filename"],
-                cleaned_image_path=draft_data["cleaned_image_url"],
                 image_metadata=draft_data["image_metadata"],
                 ai_insights=draft_data["ai_insights"],
-                handwriting_style="caveat",
                 tags=draft_data["tags"],
                 is_favorite=False
             )
@@ -277,12 +255,12 @@ def upload_image_and_process():
             }), 201
 
     return jsonify({
-        "message": "Image analyzed, handwriting identified, and notes segmented.",
+        "message": "Image transcribed into plain text notes.",
         "draft": draft_data
     }), 200
 
 @notes_bp.route("/api/stats", methods=["GET"])
 def fetch_stats():
-    """Returns application note & storage statistics."""
+    """Returns note & storage statistics."""
     stats = get_stats()
     return jsonify({"stats": stats}), 200

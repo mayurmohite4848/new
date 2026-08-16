@@ -15,7 +15,10 @@ import {
   Check,
   Edit3,
   UploadCloud,
-  Loader2
+  Loader2,
+  Columns2,
+  Eye,
+  Maximize2
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -26,6 +29,9 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
   const [activePageIndex, setActivePageIndex] = useState(0);
   const [savingPage, setSavingPage] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  // 3-Way View Layout: 'split' | 'notes' | 'photo'
+  const [viewLayout, setViewLayout] = useState('split');
 
   // Active page editing state
   const [pageTitle, setPageTitle] = useState('');
@@ -62,6 +68,10 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
 
   const activePage = notebook?.pages?.[activePageIndex] || null;
   const totalPages = notebook?.pages?.length || 0;
+  const hasImage = !!activePage?.image_path;
+
+  // If active page has no image, force notes view
+  const currentLayout = hasImage ? viewLayout : 'notes';
 
   // Change active page
   const handleSelectPage = (index) => {
@@ -72,7 +82,7 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
     setPageContent(p.content || p.extracted_text || '');
   };
 
-  // Keyboard navigation for page flip
+  // Keyboard navigation for page flip & layout switching
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
@@ -80,11 +90,17 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
         handleSelectPage(activePageIndex - 1);
       } else if (e.key === 'ArrowRight') {
         handleSelectPage(activePageIndex + 1);
+      } else if (e.key === '1') {
+        setViewLayout('notes');
+      } else if (e.key === '2' && hasImage) {
+        setViewLayout('split');
+      } else if (e.key === '3' && hasImage) {
+        setViewLayout('photo');
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activePageIndex, notebook]);
+  }, [activePageIndex, notebook, hasImage]);
 
   // Save current page changes
   const handleSavePage = async () => {
@@ -181,9 +197,9 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
         className="modal-content"
         onClick={e => e.stopPropagation()}
         style={{
-          maxWidth: '1200px',
-          width: '95vw',
-          height: '92vh',
+          maxWidth: '1280px',
+          width: '96vw',
+          height: '94vh',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden'
@@ -201,7 +217,7 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
 
         {/* Top Header Bar */}
         <div style={{
-          padding: '16px 24px',
+          padding: '14px 24px',
           borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
@@ -234,14 +250,90 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
                 </span>
               </div>
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Page {activePageIndex + 1} of {totalPages} &bull; Use Left/Right keys to flip pages
+                Page {activePageIndex + 1} of {totalPages} &bull; Shortcuts: [1] Notes &bull; [2] Split &bull; [3] Photo
               </p>
             </div>
           </div>
 
+          {/* 3-Way Layout Switcher (Notes Only | Split View | Photo Only) */}
+          {hasImage && (
+            <div style={{
+              display: 'flex',
+              background: 'rgba(15, 23, 42, 0.8)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-subtle)',
+              padding: '3px'
+            }}>
+              <button
+                onClick={() => setViewLayout('notes')}
+                title="Full-Width Notes Only (Key 1)"
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: currentLayout === 'notes' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                  color: currentLayout === 'notes' ? '#ffffff' : 'var(--text-muted)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <FileText size={13} />
+                <span>Notes Only</span>
+              </button>
+
+              <button
+                onClick={() => setViewLayout('split')}
+                title="Side-by-Side Split View (Key 2)"
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: currentLayout === 'split' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                  color: currentLayout === 'split' ? '#ffffff' : 'var(--text-muted)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Columns2 size={13} />
+                <span>Split View</span>
+              </button>
+
+              <button
+                onClick={() => setViewLayout('photo')}
+                title="Full Photo View (Key 3)"
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: currentLayout === 'photo' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                  color: currentLayout === 'photo' ? '#ffffff' : 'var(--text-muted)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <ImageIcon size={13} />
+                <span>Photo Only</span>
+              </button>
+            </div>
+          )}
+
           {/* Action Toolbar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Upload Photos to Add Pages */}
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => uploadInputRef.current?.click()}
@@ -252,12 +344,12 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
               {addingPages ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
-                  <span>Transcribing New Pages...</span>
+                  <span>Transcribing...</span>
                 </>
               ) : (
                 <>
                   <UploadCloud size={14} color="#818cf8" />
-                  <span>+ Add Photo / PDF Pages</span>
+                  <span>+ Add Pages</span>
                 </>
               )}
             </button>
@@ -278,7 +370,7 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
               style={{ color: '#818cf8' }}
             >
               <Download size={14} />
-              <span>Export PDF</span>
+              <span>PDF</span>
             </button>
 
             <button
@@ -287,7 +379,7 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
               title="Download full notebook as Markdown"
             >
               <FileText size={14} />
-              <span>Export .MD</span>
+              <span>.MD</span>
             </button>
 
             <button
@@ -305,64 +397,92 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
           </div>
         </div>
 
-        {/* Main Body: Side-by-Side Study Viewer */}
+        {/* Main Body: Dynamic Layout Switcher */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: activePage?.image_path ? '1.1fr 0.9fr' : '1fr',
+          gridTemplateColumns: currentLayout === 'split' ? '1.1fr 0.9fr' : '1fr',
           flex: 1,
           overflow: 'hidden',
           background: 'var(--bg-surface)'
         }}>
-          {/* Left Column: Plain-Text Notes Editor */}
-          <div style={{
-            padding: '24px',
-            overflowY: 'auto',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '16px',
-            borderRight: activePage?.image_path ? '1px solid var(--border-subtle)' : 'none'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-              <input
-                type="text"
-                className="input"
-                value={pageTitle}
-                onChange={e => setPageTitle(e.target.value)}
-                placeholder="Page Title..."
-                style={{ fontSize: '1.2rem', fontWeight: 700, flex: 1 }}
-              />
-              <button
-                className="btn btn-danger btn-sm btn-icon"
-                onClick={handleDeletePage}
-                title="Delete this page"
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
+          {/* Column 1: Plain-Text Notes Editor (Rendered in 'notes' and 'split' modes) */}
+          {currentLayout !== 'photo' && (
+            <div style={{
+              padding: '24px',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '16px',
+              borderRight: currentLayout === 'split' ? '1px solid var(--border-subtle)' : 'none'
+            }}>
+              {/* Optional banner when photo is hidden in notes mode */}
+              {hasImage && currentLayout === 'notes' && (
+                <div style={{
+                  padding: '8px 14px',
+                  background: 'rgba(99, 102, 241, 0.08)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid rgba(99, 102, 241, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '0.78rem',
+                  color: 'var(--text-muted)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Eye size={14} color="#818cf8" />
+                    <span>Original photo is hidden (Full-Width Focus Mode)</span>
+                  </div>
+                  <button
+                    onClick={() => setViewLayout('split')}
+                    style={{ background: 'transparent', border: 'none', color: '#818cf8', cursor: 'pointer', fontWeight: 600, fontSize: '0.78rem' }}
+                  >
+                    Show Photo in Split View &rarr;
+                  </button>
+                </div>
+              )}
 
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '6px' }}>
-                PAGE CONTENT (EDITABLE PLAIN TEXT):
-              </label>
-              <textarea
-                className="textarea"
-                value={pageContent}
-                onChange={e => setPageContent(e.target.value)}
-                placeholder="Write or edit notes for this page..."
-                style={{
-                  flex: 1,
-                  minHeight: '380px',
-                  fontFamily: 'var(--font-sans)',
-                  fontSize: '0.94rem',
-                  lineHeight: '1.7',
-                  padding: '16px'
-                }}
-              />
-            </div>
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+                <input
+                  type="text"
+                  className="input"
+                  value={pageTitle}
+                  onChange={e => setPageTitle(e.target.value)}
+                  placeholder="Page Title..."
+                  style={{ fontSize: '1.2rem', fontWeight: 700, flex: 1 }}
+                />
+                <button
+                  className="btn btn-danger btn-sm btn-icon"
+                  onClick={handleDeletePage}
+                  title="Delete this page"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
 
-          {/* Right Column: Original Handwritten Photo */}
-          {activePage?.image_path && (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '6px' }}>
+                  PAGE CONTENT (EDITABLE PLAIN TEXT):
+                </label>
+                <textarea
+                  className="textarea"
+                  value={pageContent}
+                  onChange={e => setPageContent(e.target.value)}
+                  placeholder="Write or edit notes for this page..."
+                  style={{
+                    flex: 1,
+                    minHeight: '380px',
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: '0.96rem',
+                    lineHeight: '1.7',
+                    padding: '16px'
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Column 2: Original Handwritten Photo (Rendered in 'photo' and 'split' modes) */}
+          {hasImage && currentLayout !== 'notes' && (
             <div style={{
               background: '#040711',
               padding: '20px',
@@ -394,9 +514,17 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
                   }}
                 />
               </div>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>
-                Untouched Original Photo &bull; Page {activePage.page_number}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                <span>Untouched Original Photo &bull; Page {activePage.page_number}</span>
+                {currentLayout === 'photo' && (
+                  <button
+                    onClick={() => setViewLayout('split')}
+                    style={{ background: 'transparent', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                  >
+                    Back to Split View
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

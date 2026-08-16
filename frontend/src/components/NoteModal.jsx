@@ -11,7 +11,9 @@ import {
   Image as ImageIcon,
   Copy,
   Check,
-  FileText
+  FileText,
+  Columns2,
+  Eye
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -27,7 +29,9 @@ export default function NoteModal({
   const targetNoteId = noteId || (initialNote && initialNote.id);
   const [note, setNote] = useState(initialNote || null);
   const [loading, setLoading] = useState(!initialNote && !!targetNoteId);
-  const [activeTab, setActiveTab] = useState('notes'); // 'notes' | 'photo' | 'ai'
+  
+  // 3-Way View Layout: 'split' | 'notes' | 'photo' | 'ai'
+  const [viewLayout, setViewLayout] = useState(initialNote?.image_path ? 'split' : 'notes');
   
   // Edit mode state
   const [title, setTitle] = useState(initialNote?.title || '');
@@ -53,6 +57,9 @@ export default function NoteModal({
       setContent(n.content || n.extracted_text || '');
       setTags(n.tags || []);
       setIsFavorite(!!n.is_favorite);
+      if (!n.image_path) {
+        setViewLayout('notes');
+      }
     } catch (err) {
       if (showToast) showToast(err.message || 'Failed to load note.', 'error');
       onClose();
@@ -60,6 +67,9 @@ export default function NoteModal({
       setLoading(false);
     }
   };
+
+  const hasImage = !!note?.image_path;
+  const currentLayout = hasImage ? viewLayout : (viewLayout === 'ai' ? 'ai' : 'notes');
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -132,7 +142,11 @@ export default function NoteModal({
         style={{
           display: 'flex',
           flexDirection: 'column',
-          maxHeight: '92vh'
+          maxWidth: '1280px',
+          width: '96vw',
+          height: '92vh',
+          maxHeight: '94vh',
+          overflow: 'hidden'
         }}
       >
         {/* Header */}
@@ -140,12 +154,14 @@ export default function NoteModal({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '20px 24px',
+          padding: '16px 24px',
           borderBottom: '1px solid var(--border-subtle)',
           gap: '16px',
+          background: 'rgba(15, 23, 42, 0.95)',
           flexWrap: 'wrap'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+          {/* Note Title */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '260px' }}>
             <button
               className="btn btn-ghost btn-icon"
               style={{ color: isFavorite ? '#fbbf24' : 'var(--text-dim)' }}
@@ -168,6 +184,109 @@ export default function NoteModal({
                 padding: '6px 8px'
               }}
             />
+          </div>
+
+          {/* 3-Way Layout Switcher (Notes Only | Split View | Photo Only | AI Takeaways) */}
+          <div style={{
+            display: 'flex',
+            background: 'rgba(15, 23, 42, 0.8)',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border-subtle)',
+            padding: '3px'
+          }}>
+            <button
+              onClick={() => setViewLayout('notes')}
+              title="Full-Width Notes Only"
+              style={{
+                padding: '5px 12px',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: currentLayout === 'notes' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                color: currentLayout === 'notes' ? '#ffffff' : 'var(--text-muted)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <FileText size={13} />
+              <span>Notes Only</span>
+            </button>
+
+            {hasImage && (
+              <>
+                <button
+                  onClick={() => setViewLayout('split')}
+                  title="Side-by-Side Split View"
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    background: currentLayout === 'split' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                    color: currentLayout === 'split' ? '#ffffff' : 'var(--text-muted)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <Columns2 size={13} />
+                  <span>Split View</span>
+                </button>
+
+                <button
+                  onClick={() => setViewLayout('photo')}
+                  title="Original Photo Only"
+                  style={{
+                    padding: '5px 12px',
+                    borderRadius: '6px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    background: currentLayout === 'photo' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                    color: currentLayout === 'photo' ? '#ffffff' : 'var(--text-muted)',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <ImageIcon size={13} />
+                  <span>Photo Only</span>
+                </button>
+              </>
+            )}
+
+            {note.ai_insights && (
+              <button
+                onClick={() => setViewLayout('ai')}
+                title="AI Summary & Insights"
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  background: currentLayout === 'ai' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                  color: currentLayout === 'ai' ? '#ffffff' : 'var(--text-muted)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Sparkles size={13} />
+                <span>AI Insights</span>
+              </button>
+            )}
           </div>
 
           {/* Action buttons */}
@@ -208,149 +327,141 @@ export default function NoteModal({
           </div>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Main Body: Dynamic Layout Switcher */}
         <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          padding: '10px 24px',
-          background: 'rgba(15, 23, 42, 0.4)',
-          borderBottom: '1px solid var(--border-subtle)'
+          display: 'grid',
+          gridTemplateColumns: currentLayout === 'split' ? '1.1fr 0.9fr' : '1fr',
+          flex: 1,
+          overflow: 'hidden',
+          background: 'var(--bg-surface)'
         }}>
-          <button
-            onClick={() => setActiveTab('notes')}
-            style={{
-              padding: '6px 14px',
-              borderRadius: 'var(--radius-sm)',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '0.84rem',
-              fontWeight: 600,
+          {/* Column 1: Plain Text Editor (Shown in 'notes' and 'split' modes) */}
+          {currentLayout !== 'photo' && currentLayout !== 'ai' && (
+            <div style={{
+              padding: '24px',
+              overflowY: 'auto',
               display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              background: activeTab === 'notes' ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
-              color: activeTab === 'notes' ? '#ffffff' : 'var(--text-muted)'
-            }}
-          >
-            <FileText size={14} />
-            <span>Plain Text Note</span>
-          </button>
+              flexDirection: 'column',
+              gap: '16px',
+              borderRight: currentLayout === 'split' ? '1px solid var(--border-subtle)' : 'none'
+            }}>
+              {/* Informative banner when photo is hidden */}
+              {hasImage && currentLayout === 'notes' && (
+                <div style={{
+                  padding: '8px 14px',
+                  background: 'rgba(99, 102, 241, 0.08)',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid rgba(99, 102, 241, 0.2)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '0.78rem',
+                  color: 'var(--text-muted)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Eye size={14} color="#818cf8" />
+                    <span>Original photo is hidden (Full-Width Focus Mode)</span>
+                  </div>
+                  <button
+                    onClick={() => setViewLayout('split')}
+                    style={{ background: 'transparent', border: 'none', color: '#818cf8', cursor: 'pointer', fontWeight: 600, fontSize: '0.78rem' }}
+                  >
+                    Show Photo in Split View &rarr;
+                  </button>
+                </div>
+              )}
 
-          {note.image_path && (
-            <button
-              onClick={() => setActiveTab('photo')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '0.84rem',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: activeTab === 'photo' ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
-                color: activeTab === 'photo' ? '#ffffff' : 'var(--text-muted)'
-              }}
-            >
-              <ImageIcon size={14} />
-              <span>Original Photo</span>
-            </button>
-          )}
-
-          {note.ai_insights && (
-            <button
-              onClick={() => setActiveTab('ai')}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 'var(--radius-sm)',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: '0.84rem',
-                fontWeight: 600,
-                display: 'flex',
-                alignItems: 'center',
-                gap: '6px',
-                background: activeTab === 'ai' ? 'rgba(99, 102, 241, 0.25)' : 'transparent',
-                color: activeTab === 'ai' ? '#ffffff' : 'var(--text-muted)'
-              }}
-            >
-              <Sparkles size={14} />
-              <span>AI Takeaways</span>
-            </button>
-          )}
-        </div>
-
-        {/* Modal Body */}
-        <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-          {activeTab === 'notes' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-dim)' }}>
-                PLAIN TEXT CONTENT (EDITABLE):
-              </label>
-              <textarea
-                className="textarea"
-                style={{
-                  minHeight: '320px',
-                  fontFamily: 'var(--font-sans)',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.7',
-                  padding: '16px'
-                }}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="Write or edit plain text notes here..."
-              />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '6px' }}>
+                  PLAIN TEXT CONTENT (EDITABLE):
+                </label>
+                <textarea
+                  className="textarea"
+                  style={{
+                    flex: 1,
+                    minHeight: '380px',
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: '0.96rem',
+                    lineHeight: '1.7',
+                    padding: '16px'
+                  }}
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  placeholder="Write or edit plain text notes here..."
+                />
+              </div>
             </div>
           )}
 
-          {activeTab === 'photo' && note.image_path && (
+          {/* Column 2: Original Photo (Shown in 'photo' and 'split' modes) */}
+          {hasImage && (currentLayout === 'photo' || currentLayout === 'split') && (
             <div style={{
+              background: '#040711',
+              padding: '20px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
-              gap: '12px',
-              background: '#040711',
-              padding: '20px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-subtle)'
+              justifyContent: 'center',
+              overflow: 'hidden',
+              gap: '12px'
             }}>
-              <img
-                src={note.image_path}
-                alt="Original Photo"
-                style={{ maxWidth: '100%', maxHeight: '480px', objectFit: 'contain', borderRadius: '6px' }}
-              />
-              <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>
-                Original Untouched Photo ({note.image_filename})
-              </span>
+              <div style={{
+                flex: 1,
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'auto',
+                borderRadius: '8px',
+                background: '#000000'
+              }}>
+                <img
+                  src={note.image_path}
+                  alt="Original Photo"
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '6px' }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', fontSize: '0.75rem', color: 'var(--text-dim)' }}>
+                <span>Untouched Original Photo ({note.image_filename})</span>
+                {currentLayout === 'photo' && (
+                  <button
+                    onClick={() => setViewLayout('split')}
+                    style={{ background: 'transparent', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
+                  >
+                    Back to Split View
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
-          {activeTab === 'ai' && note.ai_insights && (
-            <div className="ai-summary-card">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, marginBottom: '10px', color: '#c7d2fe' }}>
-                <Sparkles size={16} />
-                <span>Concept: {note.ai_insights.core_concept || 'Extracted Note'}</span>
+          {/* Column 3: AI Takeaways (Shown when AI view selected) */}
+          {currentLayout === 'ai' && note.ai_insights && (
+            <div style={{ padding: '24px', overflowY: 'auto' }}>
+              <div className="ai-summary-card">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, marginBottom: '10px', color: '#c7d2fe' }}>
+                  <Sparkles size={16} />
+                  <span>Concept: {note.ai_insights.core_concept || 'Extracted Note'}</span>
+                </div>
+                <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {(note.ai_insights.key_takeaways || []).map((pt, i) => (
+                    <li key={i} style={{ lineHeight: '1.5' }}>{pt}</li>
+                  ))}
+                </ul>
               </div>
-              <ul style={{ paddingLeft: '20px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {(note.ai_insights.key_takeaways || []).map((pt, i) => (
-                  <li key={i} style={{ lineHeight: '1.5' }}>{pt}</li>
-                ))}
-              </ul>
             </div>
           )}
         </div>
 
         {/* Tags Footer */}
         <div style={{
-          padding: '16px 24px',
+          padding: '14px 24px',
           borderTop: '1px solid var(--border-subtle)',
           display: 'flex',
           flexWrap: 'wrap',
           alignItems: 'center',
           gap: '8px',
-          background: 'rgba(15, 23, 42, 0.4)'
+          background: 'rgba(15, 23, 42, 0.95)'
         }}>
           <Tag size={15} color="var(--text-dim)" />
           {tags.map((t) => (

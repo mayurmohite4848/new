@@ -28,7 +28,10 @@ export const api = {
     });
   },
 
-  // Fetch all notes with query filters
+  // ==========================================
+  // SINGLE NOTES API
+  // ==========================================
+
   async getNotes({ search = '', tag = '', favorite = false, sortBy = 'created_at', order = 'desc' } = {}) {
     const params = new URLSearchParams();
     if (search) params.append('search', search);
@@ -42,12 +45,10 @@ export const api = {
     return request(url);
   },
 
-  // Get note detail by ID
   async getNoteById(id) {
     return request(`/api/notes/${id}`);
   },
 
-  // Create single note
   async createNote(noteData) {
     return request('/api/notes', {
       method: 'POST',
@@ -56,7 +57,6 @@ export const api = {
     });
   },
 
-  // Batch create multiple plain-text notes
   async batchCreateNotes(notesArray) {
     return request('/api/notes/batch', {
       method: 'POST',
@@ -65,7 +65,6 @@ export const api = {
     });
   },
 
-  // Update existing note
   async updateNote(id, noteData) {
     return request(`/api/notes/${id}`, {
       method: 'PUT',
@@ -74,21 +73,18 @@ export const api = {
     });
   },
 
-  // Delete note
   async deleteNote(id) {
     return request(`/api/notes/${id}`, {
       method: 'DELETE'
     });
   },
 
-  // Trigger minimal AI insights for a note
   async enhanceNoteAI(id) {
     return request(`/api/notes/${id}/enhance-ai`, {
       method: 'POST'
     });
   },
 
-  // Upload original image and transcribe to plain text
   async uploadImage(file, { autoSave = false, title = '', content = '' } = {}) {
     const formData = new FormData();
     formData.append('file', file);
@@ -110,7 +106,141 @@ export const api = {
     });
   },
 
-  // Get note & storage statistics
+  // ==========================================
+  // MULTI-PAGE NOTEBOOKS API
+  // ==========================================
+
+  async getNotebooks({ search = '', subject = '' } = {}) {
+    const params = new URLSearchParams();
+    if (search) params.append('search', search);
+    if (subject) params.append('subject', subject);
+    const qs = params.toString();
+    return request(`/api/notebooks${qs ? `?${qs}` : ''}`);
+  },
+
+  async getNotebookById(id) {
+    return request(`/api/notebooks/${id}`);
+  },
+
+  async createNotebook(data) {
+    return request('/api/notebooks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  },
+
+  async updateNotebook(id, data) {
+    return request(`/api/notebooks/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  },
+
+  async deleteNotebook(id) {
+    return request(`/api/notebooks/${id}`, {
+      method: 'DELETE'
+    });
+  },
+
+  async uploadNotebookBatch(files, { title = '', description = '', subject_tag = 'General', cover_color = '#6366f1' } = {}) {
+    const formData = new FormData();
+    for (const f of files) {
+      formData.append('files', f);
+    }
+    formData.append('title', title);
+    formData.append('description', description);
+    formData.append('subject_tag', subject_tag);
+    formData.append('cover_color', cover_color);
+
+    const apiKey = (localStorage.getItem('gemini_api_key') || '').trim();
+    const headers = {};
+    if (apiKey) {
+      formData.append('gemini_api_key', apiKey);
+      headers['X-Gemini-Key'] = apiKey;
+    }
+
+    return request('/api/notebooks/upload-batch', {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+  },
+
+  async addNotebookPages(notebookId, files) {
+    const formData = new FormData();
+    for (const f of files) {
+      formData.append('files', f);
+    }
+    const apiKey = (localStorage.getItem('gemini_api_key') || '').trim();
+    const headers = {};
+    if (apiKey) {
+      formData.append('gemini_api_key', apiKey);
+      headers['X-Gemini-Key'] = apiKey;
+    }
+
+    return request(`/api/notebooks/${notebookId}/pages`, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+  },
+
+  async addNotebookPage(notebookId, { title = '', content = '', file = null } = {}) {
+    const apiKey = (localStorage.getItem('gemini_api_key') || '').trim();
+
+    if (file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (title) formData.append('title', title);
+      if (apiKey) formData.append('gemini_api_key', apiKey);
+
+      return request(`/api/notebooks/${notebookId}/pages`, {
+        method: 'POST',
+        headers: apiKey ? { 'X-Gemini-Key': apiKey } : {},
+        body: formData
+      });
+    } else {
+      return request(`/api/notebooks/${notebookId}/pages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content })
+      });
+    }
+  },
+
+  async updateNotebookPage(notebookId, pageId, data) {
+    return request(`/api/notebooks/${notebookId}/pages/${pageId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  },
+
+  async deleteNotebookPage(notebookId, pageId) {
+    return request(`/api/notebooks/${notebookId}/pages/${pageId}`, {
+      method: 'DELETE'
+    });
+  },
+
+  async reorderNotebookPages(notebookId, pageIds) {
+    return request(`/api/notebooks/${notebookId}/reorder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ page_ids: pageIds })
+    });
+  },
+
+  getExportPdfUrl(notebookId) {
+    return `${API_BASE}/api/notebooks/${notebookId}/export-pdf`;
+  },
+
+  getExportMdUrl(notebookId) {
+    return `${API_BASE}/api/notebooks/${notebookId}/export-md`;
+  },
+
+  // Global Statistics
   async getStats() {
     return request('/api/stats');
   }

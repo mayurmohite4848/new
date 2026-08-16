@@ -8,6 +8,7 @@ from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
 from backend.db import init_db
 from backend.routes.notes import notes_bp
+from backend.routes.notebooks import notebooks_bp
 
 def create_app(test_config=None):
     """Application factory for the Flask backend."""
@@ -23,7 +24,7 @@ def create_app(test_config=None):
     # Configuration
     app.config["UPLOAD_FOLDER"] = upload_dir
     app.config["DATABASE_PATH"] = db_path
-    app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024  # 32 MB max upload
+    app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64 MB max for multi-page batch uploads
 
     if test_config:
         app.config.update(test_config)
@@ -36,6 +37,7 @@ def create_app(test_config=None):
 
     # Register Blueprints
     app.register_blueprint(notes_bp)
+    app.register_blueprint(notebooks_bp)
 
     # Serve uploaded images
     @app.route("/api/uploads/<path:filename>", methods=["GET"])
@@ -48,7 +50,7 @@ def create_app(test_config=None):
         return jsonify({
             "status": "healthy",
             "service": "Flask Notes & Image Extraction API",
-            "version": "1.0.0"
+            "version": "2.0.0"
         }), 200
 
     # Error handlers
@@ -58,7 +60,7 @@ def create_app(test_config=None):
 
     @app.errorhandler(413)
     def request_entity_too_large(e):
-        return jsonify({"error": "File size exceeds the 32MB maximum limit."}), 413
+        return jsonify({"error": "File size exceeds maximum upload limit."}), 413
 
     @app.errorhandler(500)
     def internal_error(e):

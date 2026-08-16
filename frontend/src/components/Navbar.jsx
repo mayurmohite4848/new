@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Key, FileText, Check, X, RefreshCw, AlertCircle, Loader2 } from 'lucide-react';
+import { Sparkles, Key, FileText, Check, X, RefreshCw, AlertCircle, Loader2, BookOpen, Layers } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function Navbar({ 
@@ -7,6 +7,9 @@ export default function Navbar({
   onOpenManualNote, 
   onNewUpload, 
   onOpenUpload, 
+  onOpenBatchNotebook,
+  activeTab = 'notes', // 'notes' | 'notebooks'
+  onChangeTab,
   stats, 
   showToast,
   backendOnline,
@@ -16,7 +19,7 @@ export default function Navbar({
   const [showKeyModal, setShowKeyModal] = useState(false);
   const [apiKey, setApiKey] = useState(localStorage.getItem('gemini_api_key') || '');
   const [verifying, setVerifying] = useState(false);
-  const [verifyResult, setVerifyResult] = useState(null); // { valid: bool, message: string }
+  const [verifyResult, setVerifyResult] = useState(null);
 
   const handleOpenNote = () => {
     if (onNewNote) onNewNote();
@@ -75,44 +78,101 @@ export default function Navbar({
         alignItems: 'center',
         justifyContent: 'space-between',
         height: '70px',
-        padding: '0'
+        padding: '0',
+        flexWrap: 'wrap'
       }}>
         {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{
-            width: '38px',
-            height: '38px',
-            borderRadius: '12px',
-            background: 'linear-gradient(135deg, var(--accent-primary) 0%, #06b6d4 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 0 15px rgba(99, 102, 241, 0.4)'
-          }}>
-            <FileText size={20} color="#ffffff" />
-          </div>
-          <div>
-            <span style={{ fontSize: '1.25rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
-              NoteExtract <span style={{ color: 'var(--accent-secondary)' }}>AI</span>
-            </span>
-            <span style={{
-              display: 'block',
-              fontSize: '0.72rem',
-              color: 'var(--text-muted)',
-              fontWeight: 500
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '38px',
+              height: '38px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, var(--accent-primary) 0%, #06b6d4 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 15px rgba(99, 102, 241, 0.4)'
             }}>
-              Plain Text Notes & Handwriting Recognition
-            </span>
+              <BookOpen size={20} color="#ffffff" />
+            </div>
+            <div>
+              <span style={{ fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
+                NoteExtract <span style={{ color: 'var(--accent-secondary)' }}>AI</span>
+              </span>
+              <span style={{
+                display: 'block',
+                fontSize: '0.7rem',
+                color: 'var(--text-muted)',
+                fontWeight: 500
+              }}>
+                Notes, Multi-Page Notebooks & PDF Export
+              </span>
+            </div>
           </div>
+
+          {/* Tab Navigation: Single Notes vs Multi-Page Notebooks */}
+          {onChangeTab && (
+            <div style={{
+              display: 'flex',
+              background: 'rgba(15, 23, 42, 0.7)',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-subtle)',
+              padding: '3px',
+              marginLeft: '10px'
+            }}>
+              <button
+                onClick={() => onChangeTab('notes')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: activeTab === 'notes' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                  color: activeTab === 'notes' ? '#ffffff' : 'var(--text-muted)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <FileText size={14} />
+                <span>Single Notes</span>
+              </button>
+
+              <button
+                onClick={() => onChangeTab('notebooks')}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  background: activeTab === 'notebooks' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                  color: activeTab === 'notebooks' ? '#ffffff' : 'var(--text-muted)',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Layers size={14} />
+                <span>Notebooks ({stats?.total_notebooks || 0})</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {onRefresh && (
             <button
               className="btn btn-ghost btn-icon"
               onClick={onRefresh}
-              title="Refresh notes from SQLite"
+              title="Refresh from SQLite"
               disabled={refreshing}
             >
               <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
@@ -131,22 +191,34 @@ export default function Navbar({
             <span>{hasKey ? 'Gemini Free Key (Active)' : 'Set Free Gemini Key'}</span>
           </button>
 
-          <button 
-            id="btn-add-text-note"
-            className="btn btn-secondary btn-sm" 
-            onClick={handleOpenNote}
-          >
-            + Text Note
-          </button>
+          {activeTab === 'notebooks' ? (
+            <button 
+              className="btn btn-primary btn-sm" 
+              onClick={onOpenBatchNotebook}
+            >
+              <Sparkles size={15} />
+              <span>+ New Multi-Page Notebook</span>
+            </button>
+          ) : (
+            <>
+              <button 
+                id="btn-add-text-note"
+                className="btn btn-secondary btn-sm" 
+                onClick={handleOpenNote}
+              >
+                + Text Note
+              </button>
 
-          <button 
-            id="btn-transcribe-photo"
-            className="btn btn-primary btn-sm" 
-            onClick={handleOpenUpload}
-          >
-            <Sparkles size={15} />
-            <span>Transcribe Photo</span>
-          </button>
+              <button 
+                id="btn-transcribe-photo"
+                className="btn btn-primary btn-sm" 
+                onClick={handleOpenUpload}
+              >
+                <Sparkles size={15} />
+                <span>Transcribe Single Photo</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -165,7 +237,7 @@ export default function Navbar({
             </div>
 
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '16px' }}>
-              Gemini Vision accurately reads human cursive handwriting and converts it directly into clear English plain text notes.
+              Gemini Flash reads messy and cursive handwriting into clean English text across single notes and multi-page notebooks.
             </p>
 
             <div style={{ marginBottom: '16px' }}>

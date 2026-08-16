@@ -181,7 +181,7 @@ def transcribe_with_gemini(image_path, api_key=None):
         print("[OCR] No Gemini API key provided. Using local PyTorch engine.")
         return None
 
-    print(f"[OCR] Transcribing full page with Gemini Interactions API (Key prefix: {key[:6]}...)...")
+    print("[OCR] Transcribing with Gemini Interactions API (API Key active)...")
 
     prompt = (
         "You are an expert handwriting transcription assistant.\n"

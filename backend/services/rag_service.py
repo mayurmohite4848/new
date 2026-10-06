@@ -52,9 +52,10 @@ def format_notebook_context(notebook):
     lines.append("\n=== NOTEBOOK PAGES END ===")
     return "\n".join(lines)
 
-def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None):
+def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, current_page_number=None, scope="all_pages"):
     """
     Executes a Grounded RAG Query against the notebook using Gemini 3.6 Flash.
+    Supports targeting the active page currently in reader or all pages in the notebook.
     Returns:
       {
         "reply": str,
@@ -84,7 +85,14 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None):
         "4. Be concise, highly accurate, and academic in tone."
     )
 
-    prompt = f"{system_instruction}\n\n{context}\n\n"
+    page_focus_hint = ""
+    if current_page_number:
+        if scope == "current_page":
+            page_focus_hint = f"\nSCOPE DIRECTIVE: Focus specifically on Page {current_page_number}. The user has set their query scope strictly to Page {current_page_number}.\n"
+        else:
+            page_focus_hint = f"\nCONTEXT HINT: The user is currently reading Page {current_page_number}. If the user refers to 'this page', 'here', or 'current notes', resolve it to Page {current_page_number}.\n"
+
+    prompt = f"{system_instruction}{page_focus_hint}\n{context}\n\n"
     
     # Append recent conversation history
     if chat_history:
@@ -158,12 +166,22 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None):
     stopwords = {"what", "is", "are", "the", "a", "an", "how", "why", "where", "when", "can", "you", "tell", "me", "about", "in", "of", "and", "or", "for", "to"}
     keywords = query_words - stopwords
 
+    # Check if user asks specifically for current page or general summary
+    is_asking_for_this_page = bool(current_page_number and any(w in user_query.lower() for w in ["this page", "here", "current page", "explain page", "summarize page"]))
+
     matching_pages = []
     for p in notebook.get('pages', []):
         p_num = p.get('page_number', 1)
-        p_text = (p.get('content') or p.get('extracted_text') or "").lower()
-        score = sum(1 for kw in keywords if kw in p_text)
-        if score > 0:
+        p_title = (p.get('title') or '').lower()
+        p_content = (p.get('content') or '').lower()
+        p_extracted = (p.get('extracted_text') or '').lower()
+        full_page_text = f"{p_title} {p_content} {p_extracted}"
+
+        score = sum(1 for kw in keywords if kw in full_page_text)
+        if (is_asking_for_this_page or scope == "current_page") and p_num == current_page_number:
+            score += 100 # Strongly prioritize current page
+        
+        if score > 0 or (scope == "current_page" and p_num == current_page_number):
             matching_pages.append((p_num, score, p))
 
     matching_pages.sort(key=lambda x: x[1], reverse=True)
@@ -174,7 +192,7 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None):
         snippets = []
         for p_num, _, page in top_pages:
             p_title = page.get('title') or f"Page {p_num}"
-            raw = (page.get('content') or page.get('extracted_text') or "")[:280]
+            raw = (page.get('content') or page.get('extracted_text') or "")[:350]
             snippets.append(f"**From [Page {p_num}] ({p_title}):**\n> {raw.strip()}...")
         
         reply_text = (

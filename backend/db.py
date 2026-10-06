@@ -84,6 +84,20 @@ def init_db(db_path=None):
         );
     """)
 
+    # 4. Notebook Chat Messages Table (Grounded RAG Conversation History)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notebook_chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            notebook_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            citations TEXT,
+            model_used TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (notebook_id) REFERENCES notebooks(id) ON DELETE CASCADE
+        );
+    """)
+
     # Check for existing table and migrate new columns if necessary
     cursor.execute("PRAGMA table_info(notes);")
     columns = [row["name"] for row in cursor.fetchall()]
@@ -110,6 +124,7 @@ def init_db(db_path=None):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_source_img ON notes(source_image_filename);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_notebooks_created ON notebooks(created_at DESC);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_pages_notebook_order ON notebook_pages(notebook_id, page_number ASC);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notebook ON notebook_chat_messages(notebook_id, created_at ASC);")
 
     conn.commit()
     conn.close()
@@ -674,3 +689,65 @@ def get_stats(upload_folder=None, db_path=None):
         "storage_used_mb": round(storage_bytes / (1024 * 1024), 2),
         "uploaded_files_count": file_count
     }
+
+def get_notebook_chat_messages(notebook_id, db_path=None):
+    """Retrieves all chat messages for a specific notebook in chronological order."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM notebook_chat_messages 
+        WHERE notebook_id = ? 
+        ORDER BY created_at ASC, id ASC
+    """, (notebook_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    messages = []
+    for r in rows:
+        d = dict(r)
+        if d.get("citations"):
+            try:
+                d["citations"] = json.loads(d["citations"])
+            except Exception:
+                d["citations"] = []
+        else:
+            d["citations"] = []
+        messages.append(d)
+    return messages
+
+def save_notebook_chat_message(notebook_id, role, content, citations=None, model_used=None, db_path=None):
+    """Saves a user or assistant chat message to the notebook's conversation history."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cit_json = json.dumps(citations or []) if citations else None
+
+    cursor.execute("""
+        INSERT INTO notebook_chat_messages (notebook_id, role, content, citations, model_used)
+        VALUES (?, ?, ?, ?, ?)
+    """, (notebook_id, role, content, cit_json, model_used))
+    msg_id = cursor.lastrowid
+    conn.commit()
+
+    cursor.execute("SELECT * FROM notebook_chat_messages WHERE id = ?", (msg_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    d = dict(row)
+    if d.get("citations"):
+        try:
+            d["citations"] = json.loads(d["citations"])
+        except Exception:
+            d["citations"] = []
+    else:
+        d["citations"] = []
+    return d
+
+def clear_notebook_chat_messages(notebook_id, db_path=None):
+    """Clears all conversation history for a specific notebook."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM notebook_chat_messages WHERE notebook_id = ?", (notebook_id,))
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return deleted

@@ -1,11 +1,12 @@
-# NoteExtract AI — Multi-Modal Document Intelligence & Note-Taking System
+# NoteExtract AI — Multi-Modal Document Intelligence & Grounded RAG Platform
 
-A full-stack, cross-platform AI application built with **Python (Flask)**, **SQLite**, and **React (Vite)** that transcribes handwritten notes and multi-page scanned PDFs into clean, structured digital notes with zero gibberish using **Google Gemini 3.6 Flash Multi-Modal Interactions API** with local PyTorch fallback.
+A full-stack, cross-platform AI application built with **Python (Flask)**, **SQLite**, and **React (Vite)** that transcribes handwritten notes and multi-page scanned PDFs into clean digital notebooks and provides **Grounded RAG (Retrieval-Augmented Generation) Document Q&A** with exact page-level citations using **Google Gemini 3.6 Flash Multi-Modal Interactions API** with local PyTorch fallback.
 
 ---
 
 ## 🌟 Key Features
 
+- **🧠 Grounded RAG "Chat with your Notebook"**: Ask questions across 20+ handwritten pages. The AI answers with **clickable page citations (`[Page 2]`)** that jump directly to that page in the reader.
 - **📖 Multi-Page Notebooks**: Create structured digital notebooks from multi-image batches or scanned PDF files.
 - **📄 Printable PDF & Markdown Export**: 1-click generation of formatted PDF documents with dynamic Table of Contents and individual page styling using ReportLab.
 - **👁️ 3-Way Layout Switcher ("Unsee" / Focus Mode)**: 
@@ -13,7 +14,7 @@ A full-stack, cross-platform AI application built with **Python (Flask)**, **SQL
   - `[ 📖 Split View ]`: 50/50 side-by-side verification (transcribed notes + untouched original photo).
   - `[ 🖼️ Photo Only ]`: Full-screen image zoom for inspecting complex diagrams and sketches.
 - **⚡ Accurate Handwriting Transcription**: Powered by Google Gemini 3.6 Flash via the GenAI Interactions API (`Api-Revision: 2026-05-20`).
-- **🗄️ SQLite Database Persistence**: Full relational schema with foreign key constraints, indexes, and full-text search.
+- **🗄️ SQLite Database Persistence**: Full relational schema with foreign keys, indexes, full-text search, and persistent conversation history.
 - **🛡️ 100% Secure Client-Side Key Storage**: Free Gemini API keys are stored solely in the user's browser `localStorage` and never logged or committed to Git.
 
 ---
@@ -34,7 +35,7 @@ python run.py
 
 ## 🧪 Automated Testing
 
-Run the automated test suite covering Single Notes, Notebooks, PDF Export, and Markdown Export:
+Run the automated test suite covering Single Notes, Notebooks, Grounded RAG, PDF Export, and Markdown Export:
 ```bash
 python -m unittest discover -s backend/tests
 ```
@@ -46,18 +47,19 @@ python -m unittest discover -s backend/tests
 ```
 ├── backend/
 │   ├── app.py                     # Flask application factory & blueprint registry
-│   ├── db.py                      # SQLite database schema, migrations & CRUD
+│   ├── db.py                      # SQLite schema, migrations & CRUD (Notes, Notebooks, Chat History)
 │   ├── routes/
 │   │   ├── notes.py               # Single notes REST endpoints & key verification
-│   │   └── notebooks.py           # Multi-page notebook CRUD, batch upload & export
+│   │   └── notebooks.py           # Multi-page notebook CRUD, batch upload, PDF export & RAG Chat
 │   ├── services/
 │   │   ├── ocr_service.py         # Gemini 3.6 Flash Interactions API + Local PyTorch fallback
+│   │   ├── rag_service.py         # Grounded RAG reasoning, prompt chunking & citation extraction
 │   │   ├── pdf_service.py         # ReportLab PDF generator & PDF page splitting
 │   │   └── image_processor.py     # Image preprocessing & validation
 │   └── tests/                     # Automated unit and integration test suite
 ├── frontend/
 │   ├── src/
-│   │   ├── components/            # React UI components (Reader, BatchUploader, Cards, Modals)
+│   │   ├── components/            # React UI (Reader, ChatDrawer, BatchUploader, Cards, Modals)
 │   │   └── services/api.js        # Frontend API client
 │   └── index.html
 ├── docker-compose.yml             # Containerized multi-service orchestration

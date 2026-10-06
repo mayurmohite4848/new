@@ -328,3 +328,89 @@ def export_markdown(notebook_id):
         mimetype="text/markdown",
         headers={"Content-Disposition": f"attachment; filename={clean_filename}.md"}
     )
+
+# =========================================================================
+# GROUNDED RAG NOTEBOOK CHAT & AI Q&A ASSISTANT
+# =========================================================================
+
+@notebooks_bp.route("/api/notebooks/<int:notebook_id>/chat", methods=["POST"])
+def chat_with_notebook(notebook_id):
+    """
+    Executes a Grounded RAG Q&A query over the full multi-page notebook context.
+    Returns the answer with page citations and persists the message to conversation history.
+    """
+    from backend.services.rag_service import query_notebook_rag
+    from backend.db import get_notebook_chat_messages, save_notebook_chat_message
+
+    notebook = get_notebook_by_id(notebook_id, include_pages=True)
+    if not notebook:
+        return jsonify({"error": "Notebook not found."}), 404
+
+    data = request.get_json() or {}
+    user_query = (data.get("message") or "").strip()
+    current_page = data.get("current_page")
+    scope = data.get("scope", "all_pages")
+    if not user_query:
+        return jsonify({"error": "Message is required."}), 400
+
+    api_key = (request.headers.get("X-Gemini-Key") or request.form.get("gemini_api_key") or data.get("gemini_api_key") or "").strip()
+    
+    # Retrieve past conversation context
+    history = get_notebook_chat_messages(notebook_id)
+
+    # 1. Save user query to DB
+    user_msg = save_notebook_chat_message(
+        notebook_id=notebook_id,
+        role="user",
+        content=user_query
+    )
+
+    # 2. Execute Grounded RAG query
+    rag_result = query_notebook_rag(
+        notebook=notebook,
+        user_query=user_query,
+        chat_history=history,
+        api_key=api_key,
+        current_page_number=current_page,
+        scope=scope
+    )
+
+    # 3. Save assistant reply with citations to DB
+    assistant_msg = save_notebook_chat_message(
+        notebook_id=notebook_id,
+        role="assistant",
+        content=rag_result["reply"],
+        citations=rag_result.get("citations", []),
+        model_used=rag_result.get("model", "gemini-3.6-flash")
+    )
+
+    return jsonify({
+        "reply": rag_result["reply"],
+        "citations": rag_result.get("citations", []),
+        "model": rag_result.get("model"),
+        "source": rag_result.get("source"),
+        "user_message": user_msg,
+        "assistant_message": assistant_msg
+    }), 200
+
+@notebooks_bp.route("/api/notebooks/<int:notebook_id>/chat", methods=["GET"])
+def get_chat_history(notebook_id):
+    """Retrieves full conversation history for this notebook."""
+    from backend.db import get_notebook_chat_messages
+    nb = get_notebook_by_id(notebook_id, include_pages=False)
+    if not nb:
+        return jsonify({"error": "Notebook not found."}), 404
+
+    messages = get_notebook_chat_messages(notebook_id)
+    return jsonify({"messages": messages, "count": len(messages)}), 200
+
+@notebooks_bp.route("/api/notebooks/<int:notebook_id>/chat", methods=["DELETE"])
+def clear_chat(notebook_id):
+    """Clears conversation history for this notebook."""
+    from backend.db import clear_notebook_chat_messages
+    nb = get_notebook_by_id(notebook_id, include_pages=False)
+    if not nb:
+        return jsonify({"error": "Notebook not found."}), 404
+
+    clear_notebook_chat_messages(notebook_id)
+    return jsonify({"message": "Chat history cleared.", "notebook_id": notebook_id}), 200

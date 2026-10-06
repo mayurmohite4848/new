@@ -240,6 +240,36 @@ export const api = {
     return `${API_BASE}/api/notebooks/${notebookId}/export-md`;
   },
 
+  // Grounded RAG Notebook Chat API
+  async chatWithNotebook(notebookId, message, { currentPage = null, scope = 'all_pages' } = {}) {
+    const apiKey = (localStorage.getItem('gemini_api_key') || '').trim();
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['X-Gemini-Key'] = apiKey;
+    }
+
+    return request(`/api/notebooks/${notebookId}/chat`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ 
+        message, 
+        current_page: currentPage,
+        scope,
+        gemini_api_key: apiKey 
+      })
+    });
+  },
+
+  async getNotebookChatHistory(notebookId) {
+    return request(`/api/notebooks/${notebookId}/chat`);
+  },
+
+  async clearNotebookChatHistory(notebookId) {
+    return request(`/api/notebooks/${notebookId}/chat`, {
+      method: 'DELETE'
+    });
+  },
+
   // Global Statistics
   async getStats() {
     return request('/api/stats');

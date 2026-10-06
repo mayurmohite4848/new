@@ -18,9 +18,12 @@ import {
   Loader2,
   Columns2,
   Eye,
-  Maximize2
+  Maximize2,
+  Bot,
+  MessageSquare
 } from 'lucide-react';
 import { api } from '../services/api';
+import NotebookChatDrawer from './NotebookChatDrawer';
 
 export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpdated, showToast }) {
   const [notebook, setNotebook] = useState(null);
@@ -32,6 +35,10 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
 
   // 3-Way View Layout: 'split' | 'notes' | 'photo'
   const [viewLayout, setViewLayout] = useState('split');
+  
+  // AI Grounded RAG Chat Drawer Toggle & Expand
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [isChatExpanded, setIsChatExpanded] = useState(false);
 
   // Active page editing state
   const [pageTitle, setPageTitle] = useState('');
@@ -191,18 +198,36 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
 
   if (!notebook) return null;
 
+  // Compute Grid Columns dynamically
+  const getGridTemplateColumns = () => {
+    if (showChatDrawer && isChatExpanded) {
+      return '1fr 1.6fr'; // Wide chat view alongside notes
+    }
+    if (showChatDrawer) {
+      if (currentLayout === 'split') {
+        return '1fr 0.9fr 400px';
+      }
+      return '1fr 400px';
+    }
+    return currentLayout === 'split' ? '1.1fr 0.9fr' : '1fr';
+  };
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div 
         className="modal-content"
         onClick={e => e.stopPropagation()}
         style={{
-          maxWidth: '1280px',
+          maxWidth: showChatDrawer ? (isChatExpanded ? '1540px' : '1420px') : '1280px',
           width: '96vw',
-          height: '94vh',
+          height: '92vh',
+          maxHeight: '92vh',
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          overscrollBehavior: 'contain',
+          position: 'relative',
+          transition: 'max-width 0.2s ease'
         }}
       >
         {/* Hidden File Input for Adding Photo Pages */}
@@ -217,14 +242,15 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
 
         {/* Top Header Bar */}
         <div style={{
-          padding: '14px 24px',
+          padding: '12px 24px',
           borderBottom: '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           background: 'rgba(15, 23, 42, 0.95)',
           gap: '16px',
-          flexWrap: 'wrap'
+          flexWrap: 'wrap',
+          flexShrink: 0
         }}>
           {/* Title & Subject */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -236,7 +262,8 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#ffffff'
+              color: '#ffffff',
+              flexShrink: 0
             }}>
               <BookOpen size={20} />
             </div>
@@ -256,7 +283,7 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
           </div>
 
           {/* 3-Way Layout Switcher (Notes Only | Split View | Photo Only) */}
-          {hasImage && (
+          {hasImage && !isChatExpanded && (
             <div style={{
               display: 'flex',
               background: 'rgba(15, 23, 42, 0.8)',
@@ -334,6 +361,26 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
 
           {/* Action Toolbar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Grounded RAG Chat Toggle Button */}
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => {
+                setShowChatDrawer(prev => !prev);
+                if (showChatDrawer) setIsChatExpanded(false);
+              }}
+              title="Chat with Notebook via Grounded RAG"
+              style={{
+                background: showChatDrawer 
+                  ? 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)' 
+                  : 'linear-gradient(135deg, var(--accent-primary) 0%, #06b6d4 100%)',
+                boxShadow: showChatDrawer ? '0 0 12px rgba(6, 182, 212, 0.4)' : 'none',
+                gap: '6px'
+              }}
+            >
+              <Bot size={15} />
+              <span>{showChatDrawer ? 'Hide Chat' : '💬 Chat AI (RAG)'}</span>
+            </button>
+
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => uploadInputRef.current?.click()}
@@ -397,26 +444,30 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
           </div>
         </div>
 
-        {/* Main Body: Dynamic Layout Switcher */}
+        {/* Main Body: Dynamic Grid Container with minHeight: 0 and minWidth: 0 */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: currentLayout === 'split' ? '1.1fr 0.9fr' : '1fr',
+          gridTemplateColumns: getGridTemplateColumns(),
           flex: 1,
+          minHeight: 0,
+          minWidth: 0,
           overflow: 'hidden',
           background: 'var(--bg-surface)'
         }}>
-          {/* Column 1: Plain-Text Notes Editor (Rendered in 'notes' and 'split' modes) */}
-          {currentLayout !== 'photo' && (
+          {/* Column 1: Plain-Text Notes Editor (Shown when not in photo-only mode) */}
+          {(currentLayout !== 'photo' || isChatExpanded) && (
             <div style={{
-              padding: '24px',
+              padding: '20px 24px',
               overflowY: 'auto',
+              minHeight: 0,
+              minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
-              gap: '16px',
-              borderRight: currentLayout === 'split' ? '1px solid var(--border-subtle)' : 'none'
+              gap: '14px',
+              borderRight: (currentLayout === 'split' || showChatDrawer) ? '1px solid var(--border-subtle)' : 'none'
             }}>
-              {/* Optional banner when photo is hidden in notes mode */}
-              {hasImage && currentLayout === 'notes' && (
+              {/* Informative banner when photo is hidden */}
+              {hasImage && currentLayout === 'notes' && !isChatExpanded && (
                 <div style={{
                   padding: '8px 14px',
                   background: 'rgba(99, 102, 241, 0.08)',
@@ -448,8 +499,25 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
                   value={pageTitle}
                   onChange={e => setPageTitle(e.target.value)}
                   placeholder="Page Title..."
-                  style={{ fontSize: '1.2rem', fontWeight: 700, flex: 1 }}
+                  style={{ fontSize: '1.15rem', fontWeight: 700, flex: 1 }}
                 />
+
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowChatDrawer(true)}
+                  title="Ask AI questions about this page"
+                  style={{
+                    background: 'rgba(99, 102, 241, 0.15)',
+                    border: '1px solid rgba(99, 102, 241, 0.35)',
+                    color: '#c7d2fe',
+                    fontSize: '0.78rem',
+                    gap: '5px'
+                  }}
+                >
+                  <Bot size={14} color="#818cf8" />
+                  <span>Ask AI</span>
+                </button>
+
                 <button
                   className="btn btn-danger btn-sm btn-icon"
                   onClick={handleDeletePage}
@@ -459,8 +527,8 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
                 </button>
               </div>
 
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '6px' }}>
+              <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '6px' }}>
                   PAGE CONTENT (EDITABLE PLAIN TEXT):
                 </label>
                 <textarea
@@ -470,9 +538,9 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
                   placeholder="Write or edit notes for this page..."
                   style={{
                     flex: 1,
-                    minHeight: '380px',
+                    minHeight: '280px',
                     fontFamily: 'var(--font-sans)',
-                    fontSize: '0.96rem',
+                    fontSize: '0.94rem',
                     lineHeight: '1.7',
                     padding: '16px'
                   }}
@@ -481,17 +549,20 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
             </div>
           )}
 
-          {/* Column 2: Original Handwritten Photo (Rendered in 'photo' and 'split' modes) */}
-          {hasImage && currentLayout !== 'notes' && (
+          {/* Column 2: Original Handwritten Photo (Shown in 'photo' and 'split' modes when chat isn't expanded) */}
+          {hasImage && currentLayout !== 'notes' && !isChatExpanded && (
             <div style={{
               background: '#040711',
-              padding: '20px',
+              padding: '16px',
+              minHeight: 0,
+              minWidth: 0,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               overflow: 'hidden',
-              gap: '12px'
+              gap: '10px',
+              borderRight: showChatDrawer ? '1px solid var(--border-subtle)' : 'none'
             }}>
               <div style={{
                 flex: 1,
@@ -527,17 +598,40 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
               </div>
             </div>
           )}
+
+          {/* Column 3: Grounded RAG AI Chat Drawer with Independent Scroll */}
+          {showChatDrawer && (
+            <div style={{ minHeight: 0, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <NotebookChatDrawer
+                notebookId={notebook.id}
+                notebookTitle={notebook.title}
+                totalPages={totalPages}
+                currentPage={activePageIndex + 1}
+                currentPageTitle={pageTitle || `Page ${activePageIndex + 1}`}
+                currentPageContent={pageContent}
+                onJumpToPage={(targetIdx) => handleSelectPage(targetIdx)}
+                onClose={() => {
+                  setShowChatDrawer(false);
+                  setIsChatExpanded(false);
+                }}
+                isExpanded={isChatExpanded}
+                onToggleExpand={() => setIsChatExpanded(prev => !prev)}
+                showToast={showToast}
+              />
+            </div>
+          )}
         </div>
 
         {/* Bottom Filmstrip / Page Turner Navigation */}
         <div style={{
-          padding: '12px 24px',
+          padding: '10px 24px',
           borderTop: '1px solid var(--border-subtle)',
           background: 'rgba(15, 23, 42, 0.95)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '16px'
+          gap: '16px',
+          flexShrink: 0
         }}>
           {/* Previous Page Button */}
           <button

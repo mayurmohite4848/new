@@ -13,9 +13,12 @@ import {
   Check,
   FileText,
   Columns2,
-  Eye
+  Eye,
+  Edit3,
+  Code2
 } from 'lucide-react';
 import { api } from '../services/api';
+import NoteContentRenderer from './NoteContentRenderer';
 
 export default function NoteModal({ 
   note: initialNote, 
@@ -36,6 +39,7 @@ export default function NoteModal({
   // Edit mode state
   const [title, setTitle] = useState(initialNote?.title || '');
   const [content, setContent] = useState(initialNote?.content || initialNote?.extracted_text || '');
+  const [editorMode, setEditorMode] = useState('edit'); // 'edit' | 'preview'
   const [tags, setTags] = useState(initialNote?.tags || []);
   const [tagInput, setTagInput] = useState('');
   const [isFavorite, setIsFavorite] = useState(!!initialNote?.is_favorite);
@@ -372,23 +376,93 @@ export default function NoteModal({
               )}
 
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '6px' }}>
-                  PLAIN TEXT CONTENT (EDITABLE):
-                </label>
-                <textarea
-                  className="textarea"
-                  style={{
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px'
+                }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-dim)' }}>
+                    NOTE CONTENT:
+                  </label>
+                  
+                  {/* Edit / Rendered Preview Mode Switcher */}
+                  <div style={{
+                    display: 'flex',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-subtle)',
+                    padding: '2px'
+                  }}>
+                    <button
+                      onClick={() => setEditorMode('edit')}
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: '4px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        background: editorMode === 'edit' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                        color: editorMode === 'edit' ? '#ffffff' : 'var(--text-muted)'
+                      }}
+                    >
+                      <Edit3 size={12} />
+                      <span>Edit Raw</span>
+                    </button>
+                    <button
+                      onClick={() => setEditorMode('preview')}
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: '4px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        background: editorMode === 'preview' ? 'linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(99, 102, 241, 0.3) 100%)' : 'transparent',
+                        color: editorMode === 'preview' ? '#38bdf8' : 'var(--text-muted)'
+                      }}
+                    >
+                      <Eye size={12} />
+                      <span>Rendered Preview (Math & Diagrams)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {editorMode === 'edit' ? (
+                  <textarea
+                    className="textarea"
+                    style={{
+                      flex: 1,
+                      minHeight: '380px',
+                      fontFamily: 'var(--font-sans)',
+                      fontSize: '0.96rem',
+                      lineHeight: '1.7',
+                      padding: '16px'
+                    }}
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Write or edit plain text notes here... Supports LaTeX ($math$) and Mermaid (```mermaid) diagrams"
+                  />
+                ) : (
+                  <div style={{
                     flex: 1,
                     minHeight: '380px',
-                    fontFamily: 'var(--font-sans)',
-                    fontSize: '0.96rem',
-                    lineHeight: '1.7',
-                    padding: '16px'
-                  }}
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write or edit plain text notes here..."
-                />
+                    padding: '18px',
+                    background: 'rgba(15, 23, 42, 0.5)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    overflowY: 'auto'
+                  }}>
+                    <NoteContentRenderer content={content} />
+                  </div>
+                )}
               </div>
             </div>
           )}

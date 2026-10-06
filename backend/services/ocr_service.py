@@ -164,6 +164,12 @@ def expand_abbreviations_and_shortforms(text):
             result.append(token)
     return "".join(result)
 
+import time
+try:
+    from backend.db import log_llm_telemetry
+except ImportError:
+    from db import log_llm_telemetry
+
 CANDIDATE_GEMINI_MODELS = [
     "gemini-3.6-flash",
     "gemini-3.5-flash",
@@ -173,26 +179,35 @@ CANDIDATE_GEMINI_MODELS = [
 
 def transcribe_with_gemini(image_path, api_key=None):
     """
-    Transcribes handwritten text from image into 1 complete structured plain text note
-    using the Gemini Interactions API (gemini-3.6-flash / 3.5-flash).
+    Transcribes handwritten text, mathematical equations (LaTeX), and diagrams (Mermaid)
+    from an image using the Gemini Interactions API (gemini-3.6-flash / 3.5-flash) with LLMOps telemetry.
     """
+    start_time = time.time()
     key = (api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
     if not key:
         print("[OCR] No Gemini API key provided. Using local PyTorch engine.")
         return None
 
-    print("[OCR] Transcribing with Gemini Interactions API (API Key active)...")
+    print("[OCR] Transcribing with Gemini Interactions API (Multi-Modal Math & Diagram Engine)...")
 
     prompt = (
-        "You are an expert handwriting transcription assistant.\n"
-        "Carefully transcribe all handwritten and printed English text from this notebook/document page into ONE complete, well-organized plain text note.\n"
-        "Rules:\n"
-        "1. Accurately decipher cursive, messy handwriting, notes, and abbreviations.\n"
-        "2. Keep the entire page together in one single note.\n"
-        "3. Put the main topic/heading on the very first line (e.g. # Exploratory Data Analysis).\n"
-        "4. Preserve all sections, bullet points, sub-points, and definitions in structured plain text.\n"
-        "5. Expand handwritten shorthand (e.g. w/, b/c, mgmt, reqs, arch, db) into clear words.\n"
-        "6. Return ONLY the transcribed plain text note without conversational preamble or conversational ending."
+        "You are an expert multi-modal academic handwriting transcription assistant.\n"
+        "Carefully transcribe all handwritten and printed English text, mathematical equations, and diagrams from this notebook page into ONE complete, well-organized note.\n\n"
+        "Formatting & Extraction Rules:\n"
+        "1. MAIN HEADING: Put the main topic/heading on the very first line (e.g. # Advanced Exploratory Data Analysis).\n"
+        "2. ACCURACY: Accurately decipher cursive, messy handwriting, notes, bullets, and abbreviations.\n"
+        "3. MATHEMATICAL EQUATIONS (LaTeX): Convert all handwritten math equations, formulas, variables, Greek letters, summations, integrals, fractions, and matrices into standard LaTeX/KaTeX syntax:\n"
+        "   - Use inline math `$equation$` for formulas inside sentences (e.g., `$f(x) = \\sigma(W^T x + b)$` or `$\\mu = \\frac{1}{N} \\sum x_i$`).\n"
+        "   - Use block display math `$$equation$$` on separate lines for major equations.\n"
+        "4. DIAGRAMS & FLOWCHARTS (Mermaid): If there are hand-drawn sketches, workflow charts, flowcharts, decision trees, state machines, sequence diagrams, or system architecture boxes, transcribe and convert them into clean, valid Mermaid diagrams inside codeblocks:\n"
+        "   ```mermaid\n"
+        "   graph TD\n"
+        "       A[Raw Data] --> B[Preprocessing]\n"
+        "       B --> C[Feature Engineering]\n"
+        "   ```\n"
+        "5. EXPAND SHORTHAND: Expand common handwritten shorthand (e.g. w/, b/c, mgmt, reqs, arch, db, fn) into clear standard terms.\n"
+        "6. STRUCTURE: Organize clearly into sections using Markdown headers (`##`, `###`), bullet points, and definitions.\n"
+        "7. OUTPUT ONLY: Return ONLY the transcribed note without conversational intro or outro."
     )
 
     with open(image_path, "rb") as f:
@@ -201,6 +216,8 @@ def transcribe_with_gemini(image_path, api_key=None):
     b64_image = base64.b64encode(image_bytes).decode('utf-8')
     ext = os.path.splitext(image_path)[1].lower().replace('.', '')
     mime_type = "image/jpeg" if ext in ("jpg", "jpeg") else (f"image/{ext}" if ext else "image/jpeg")
+
+    p_tokens = int(len(prompt.split()) * 1.3) + 258  # 258 image tokens estimate
 
     # Method 1: Google GenAI SDK Interactions API
     for model_name in CANDIDATE_GEMINI_MODELS:
@@ -220,8 +237,22 @@ def transcribe_with_gemini(image_path, api_key=None):
                 ]
             )
             if interaction and interaction.output_text:
-                print(f"[OCR] Successfully transcribed with GenAI Interactions API ({model_name})!")
-                return interaction.output_text.strip()
+                latency_ms = int((time.time() - start_time) * 1000)
+                result_text = interaction.output_text.strip()
+                c_tokens = int(len(result_text.split()) * 1.3)
+                log_llm_telemetry(
+                    request_type="ocr_transcription",
+                    model_used=model_name,
+                    is_fallback=False,
+                    latency_ms=latency_ms,
+                    prompt_tokens=p_tokens,
+                    completion_tokens=c_tokens,
+                    total_tokens=p_tokens + c_tokens,
+                    estimated_cost_usd=round((p_tokens * 0.000075 + c_tokens * 0.0003) / 1000, 6),
+                    status="success"
+                )
+                print(f"[OCR] Successfully transcribed with GenAI Interactions API ({model_name}) in {latency_ms}ms!")
+                return result_text
         except Exception as e:
             print(f"[OCR] GenAI Interactions ({model_name}) attempt: {e}")
 
@@ -258,13 +289,39 @@ def transcribe_with_gemini(image_path, api_key=None):
                         for c in step.get("content", []):
                             if c.get("type") == "text" and "text" in c:
                                 output_texts.append(c["text"])
+                latency_ms = int((time.time() - start_time) * 1000)
                 if output_texts:
                     transcribed = "\n".join(output_texts).strip()
-                    print(f"[OCR] Successfully transcribed via direct Interactions REST ({model_name})!")
+                    c_tokens = int(len(transcribed.split()) * 1.3)
+                    log_llm_telemetry(
+                        request_type="ocr_transcription",
+                        model_used=model_name,
+                        is_fallback=False,
+                        latency_ms=latency_ms,
+                        prompt_tokens=p_tokens,
+                        completion_tokens=c_tokens,
+                        total_tokens=p_tokens + c_tokens,
+                        estimated_cost_usd=round((p_tokens * 0.000075 + c_tokens * 0.0003) / 1000, 6),
+                        status="success"
+                    )
+                    print(f"[OCR] Successfully transcribed via direct Interactions REST ({model_name}) in {latency_ms}ms!")
                     return transcribed
                 if "output_text" in data and data["output_text"]:
-                    print(f"[OCR] Successfully transcribed via direct Interactions REST ({model_name})!")
-                    return data["output_text"].strip()
+                    transcribed = data["output_text"].strip()
+                    c_tokens = int(len(transcribed.split()) * 1.3)
+                    log_llm_telemetry(
+                        request_type="ocr_transcription",
+                        model_used=model_name,
+                        is_fallback=False,
+                        latency_ms=latency_ms,
+                        prompt_tokens=p_tokens,
+                        completion_tokens=c_tokens,
+                        total_tokens=p_tokens + c_tokens,
+                        estimated_cost_usd=round((p_tokens * 0.000075 + c_tokens * 0.0003) / 1000, 6),
+                        status="success"
+                    )
+                    print(f"[OCR] Successfully transcribed via direct Interactions REST ({model_name}) in {latency_ms}ms!")
+                    return transcribed
         except urllib.error.HTTPError as http_err:
             err_body = http_err.read().decode('utf-8', errors='ignore')
             print(f"[OCR] Interactions REST {model_name} HTTP {http_err.code}: {err_body}")
@@ -276,15 +333,19 @@ def transcribe_with_gemini(image_path, api_key=None):
 
 def extract_handwriting_text(image_path, api_key=None):
     """
-    Primary handwriting transcription engine.
-    Tries Gemini Flash Vision first (if API key available), then falls back to local PyTorch OCR + NLP expander.
+    Primary handwriting transcription engine with automatic zero-downtime hybrid fallback.
+    Tries Gemini Vision first (if API key available), then falls back to local PyTorch EasyOCR + NLP corrector.
     """
+    start_time = time.time()
+    key = (api_key or os.environ.get("GEMINI_API_KEY") or "").strip()
+
     gemini_text = transcribe_with_gemini(image_path, api_key)
     if gemini_text:
         return gemini_text
 
     # Local PyTorch EasyOCR Fallback
     raw_text = ""
+    fallback_reason = "no_api_key" if not key else "gemini_api_unavailable"
     reader = get_ocr_reader()
     if reader:
         try:
@@ -302,11 +363,35 @@ def extract_handwriting_text(image_path, api_key=None):
         except Exception:
             pass
 
+    latency_ms = int((time.time() - start_time) * 1000)
+    
     if not raw_text:
+        log_llm_telemetry(
+            request_type="ocr_transcription",
+            model_used="pytorch-easyocr-local",
+            is_fallback=True,
+            fallback_reason=fallback_reason,
+            latency_ms=latency_ms,
+            status="error",
+            error_message="No text detected by local OCR engine"
+        )
         return ""
 
     corrected = correct_ocr_handwriting_errors(raw_text)
-    return expand_abbreviations_and_shortforms(corrected)
+    expanded = expand_abbreviations_and_shortforms(corrected)
+
+    c_tokens = int(len(expanded.split()) * 1.3)
+    log_llm_telemetry(
+        request_type="ocr_transcription",
+        model_used="pytorch-easyocr-local",
+        is_fallback=True,
+        fallback_reason=fallback_reason,
+        latency_ms=latency_ms,
+        completion_tokens=c_tokens,
+        total_tokens=c_tokens,
+        status="fallback"
+    )
+    return expanded
 
 def segment_text_into_notes(extracted_text, original_filename="", metadata=None):
     """

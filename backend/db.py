@@ -110,6 +110,25 @@ def init_db(db_path=None):
         );
     """)
 
+    # 6. LLMOps Telemetry Logs Table (Model Routing, Latency, Token Metrics & Fallback Health)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS llm_telemetry_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_type TEXT NOT NULL,
+            model_used TEXT NOT NULL,
+            is_fallback INTEGER DEFAULT 0,
+            fallback_reason TEXT DEFAULT 'none',
+            latency_ms INTEGER NOT NULL DEFAULT 0,
+            prompt_tokens INTEGER DEFAULT 0,
+            completion_tokens INTEGER DEFAULT 0,
+            total_tokens INTEGER DEFAULT 0,
+            estimated_cost_usd REAL DEFAULT 0.0,
+            status TEXT DEFAULT 'success',
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
     # Check for existing table and migrate new columns if necessary
     cursor.execute("PRAGMA table_info(notes);")
     columns = [row["name"] for row in cursor.fetchall()]
@@ -138,6 +157,8 @@ def init_db(db_path=None):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_pages_notebook_order ON notebook_pages(notebook_id, page_number ASC);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notebook ON notebook_chat_messages(notebook_id, created_at ASC);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_workspace_chat_created ON workspace_chat_messages(created_at ASC);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_created ON llm_telemetry_logs(created_at DESC);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_model ON llm_telemetry_logs(model_used);")
 
     conn.commit()
     conn.close()
@@ -854,4 +875,123 @@ def clear_workspace_chat_messages(db_path=None):
     conn.commit()
     conn.close()
     return deleted
+
+# ==============================================================================
+# LLMOps Telemetry Logging & Observability Analytics
+# ==============================================================================
+
+def log_llm_telemetry(request_type, model_used, is_fallback=False, fallback_reason="none",
+                      latency_ms=0, prompt_tokens=0, completion_tokens=0, total_tokens=0,
+                      estimated_cost_usd=0.0, status="success", error_message=None, db_path=None):
+    """Logs an LLM, OCR, or RAG request execution for real-time LLMOps telemetry."""
+    try:
+        conn = get_db_connection(db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO llm_telemetry_logs (
+                request_type, model_used, is_fallback, fallback_reason,
+                latency_ms, prompt_tokens, completion_tokens, total_tokens,
+                estimated_cost_usd, status, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            request_type, model_used, 1 if is_fallback else 0, fallback_reason or "none",
+            int(latency_ms), int(prompt_tokens), int(completion_tokens), int(total_tokens),
+            float(estimated_cost_usd), status or "success", error_message
+        ))
+        log_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return log_id
+    except Exception as e:
+        print(f"[Telemetry Error] Failed to log telemetry: {e}")
+        return None
+
+def get_llm_telemetry_stats(db_path=None):
+    """Calculates aggregate LLMOps observability metrics: avg latency, token totals, model distribution, fallback rates."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) as total_requests FROM llm_telemetry_logs")
+    total_reqs = cursor.fetchone()["total_requests"] or 0
+
+    cursor.execute("""
+        SELECT 
+            AVG(latency_ms) as avg_latency_ms,
+            MIN(latency_ms) as min_latency_ms,
+            MAX(latency_ms) as max_latency_ms,
+            SUM(total_tokens) as total_tokens,
+            SUM(prompt_tokens) as total_prompt_tokens,
+            SUM(completion_tokens) as total_completion_tokens,
+            SUM(estimated_cost_usd) as total_estimated_cost_usd
+        FROM llm_telemetry_logs
+    """)
+    agg_row = cursor.fetchone()
+
+    cursor.execute("""
+        SELECT model_used, COUNT(*) as count, AVG(latency_ms) as avg_latency, SUM(total_tokens) as tokens
+        FROM llm_telemetry_logs
+        GROUP BY model_used
+        ORDER BY count DESC
+    """)
+    model_rows = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("""
+        SELECT request_type, COUNT(*) as count, AVG(latency_ms) as avg_latency
+        FROM llm_telemetry_logs
+        GROUP BY request_type
+        ORDER BY count DESC
+    """)
+    type_rows = [dict(r) for r in cursor.fetchall()]
+
+    cursor.execute("SELECT COUNT(*) as fallback_count FROM llm_telemetry_logs WHERE is_fallback = 1")
+    fallbacks = cursor.fetchone()["fallback_count"] or 0
+
+    cursor.execute("SELECT COUNT(*) as error_count FROM llm_telemetry_logs WHERE status = 'error'")
+    errors = cursor.fetchone()["error_count"] or 0
+
+    conn.close()
+
+    fallback_rate = round((fallbacks / total_reqs * 100), 1) if total_reqs > 0 else 0.0
+    error_rate = round((errors / total_reqs * 100), 1) if total_reqs > 0 else 0.0
+
+    return {
+        "total_requests": total_reqs,
+        "avg_latency_ms": round(agg_row["avg_latency_ms"] or 0, 1),
+        "min_latency_ms": round(agg_row["min_latency_ms"] or 0, 1),
+        "max_latency_ms": round(agg_row["max_latency_ms"] or 0, 1),
+        "total_tokens": agg_row["total_tokens"] or 0,
+        "total_prompt_tokens": agg_row["total_prompt_tokens"] or 0,
+        "total_completion_tokens": agg_row["total_completion_tokens"] or 0,
+        "total_estimated_cost_usd": round(agg_row["total_estimated_cost_usd"] or 0.0, 5),
+        "fallback_count": fallbacks,
+        "fallback_rate_pct": fallback_rate,
+        "error_count": errors,
+        "error_rate_pct": error_rate,
+        "models_breakdown": model_rows,
+        "request_types_breakdown": type_rows
+    }
+
+def get_llm_telemetry_recent(limit=50, db_path=None):
+    """Retrieves recent individual LLMOps execution telemetry logs."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM llm_telemetry_logs
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+    """, (limit,))
+    rows = [dict(r) for r in cursor.fetchall()]
+    conn.close()
+    return rows
+
+def clear_llm_telemetry(db_path=None):
+    """Clears all telemetry logs from SQLite."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM llm_telemetry_logs")
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return deleted
+
 

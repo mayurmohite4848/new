@@ -9,6 +9,7 @@ from flask_cors import CORS
 from backend.db import init_db
 from backend.routes.notes import notes_bp
 from backend.routes.notebooks import notebooks_bp
+from backend.routes.telemetry import telemetry_bp
 
 def create_app(test_config=None):
     """Application factory for the Flask backend."""
@@ -38,6 +39,7 @@ def create_app(test_config=None):
     # Register Blueprints
     app.register_blueprint(notes_bp)
     app.register_blueprint(notebooks_bp)
+    app.register_blueprint(telemetry_bp)
 
     # Serve uploaded images
     @app.route("/api/uploads/<path:filename>", methods=["GET"])

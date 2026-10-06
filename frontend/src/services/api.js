@@ -305,6 +305,25 @@ export const api = {
   // Global Statistics
   async getStats() {
     return request('/api/stats');
+  },
+
+  // ==========================================
+  // LLMOPS TELEMETRY & OBSERVABILITY API
+  // ==========================================
+
+  async getTelemetryStats() {
+    return request('/api/telemetry/stats');
+  },
+
+  async getTelemetryLogs(limit = 50) {
+    return request(`/api/telemetry/logs?limit=${limit}`);
+  },
+
+  async clearTelemetryLogs() {
+    return request('/api/telemetry/logs', {
+      method: 'DELETE'
+    });
   }
 };
+
 

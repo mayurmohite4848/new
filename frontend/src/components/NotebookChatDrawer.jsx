@@ -23,6 +23,8 @@ import {
   Compass
 } from 'lucide-react';
 import { api } from '../services/api';
+import MathViewer from './MathViewer';
+import MermaidViewer from './MermaidViewer';
 
 const QUICK_PROMPT_PRESETS = [
   { id: 'summary', icon: Lightbulb, label: 'Key Takeaways', getPrompt: (pg) => 'Summarize the core concepts and key takeaways from these notes with exact page citations.' },
@@ -255,19 +257,10 @@ export default function NotebookChatDrawer({
           </em>
         );
       } else if (token.startsWith('$') && token.endsWith('$')) {
-        // Math formula
+        // Math formula (LaTeX/KaTeX)
         const inner = token.slice(1, -1);
         parts.push(
-          <span key={`m-${match.index}`} style={{
-            fontFamily: 'Cambria Math, serif',
-            fontStyle: 'italic',
-            color: '#a5f3fc',
-            background: 'rgba(6, 182, 212, 0.1)',
-            padding: '1px 5px',
-            borderRadius: '4px'
-          }}>
-            {inner}
-          </span>
+          <MathViewer key={`m-${match.index}`} math={inner} displayMode={false} />
         );
       }
 
@@ -281,7 +274,7 @@ export default function NotebookChatDrawer({
     return parts;
   };
 
-  // Helper to format text with Markdown, code blocks, and clickable [Page X] citation badges
+  // Helper to format text with Markdown, code blocks, KaTeX, Mermaid, and clickable [Page X] citation badges
   const renderFormattedMessage = (content, msgId) => {
     if (!content) return null;
 
@@ -311,6 +304,14 @@ export default function NotebookChatDrawer({
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {blocks.map((block, bIdx) => {
           if (block.type === 'code') {
+            const lang = (block.language || '').toLowerCase().trim();
+            if (lang === 'mermaid') {
+              return <MermaidViewer key={`mermaid-${bIdx}`} chartCode={block.code} />;
+            }
+            if (lang === 'math' || lang === 'latex' || lang === 'katex') {
+              return <MathViewer key={`math-${bIdx}`} math={block.code} displayMode={true} />;
+            }
+
             return (
               <div 
                 key={`code-${bIdx}`} 

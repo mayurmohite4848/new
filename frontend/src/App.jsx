@@ -22,6 +22,8 @@ import ManualNoteModal from './components/ManualNoteModal';
 import NotebookCard from './components/NotebookCard';
 import NotebookBatchUploader from './components/NotebookBatchUploader';
 import NotebookReaderModal from './components/NotebookReaderModal';
+import GlobalWorkspaceChatModal from './components/GlobalWorkspaceChatModal';
+import LLMOpsModal from './components/LLMOpsModal';
 import Toast from './components/Toast';
 import { api } from './services/api';
 
@@ -54,9 +56,24 @@ export default function App() {
   const [activeNote, setActiveNote] = useState(null);
   const [showBatchUploader, setShowBatchUploader] = useState(false);
   const [activeNotebookId, setActiveNotebookId] = useState(null);
+  const [activeNotebookInitialPage, setActiveNotebookInitialPage] = useState(0);
+  const [showGlobalChat, setShowGlobalChat] = useState(false);
+  const [showTelemetryModal, setShowTelemetryModal] = useState(false);
 
   // Toast notifications
   const [toasts, setToasts] = useState([]);
+
+  // Global Keyboard Shortcuts (Ctrl+K or Cmd+K for Global AI Hub)
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setShowGlobalChat(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   const addToast = (message, type = 'info') => {
     const id = Date.now() + Math.random();
@@ -179,6 +196,37 @@ export default function App() {
     loadData();
   };
 
+  // Cross-Document Navigation from RAG Citations
+  const handleOpenNotebookFromCitation = (notebookId, pageIndex = 0, notebookTitle = null) => {
+    let targetId = notebookId;
+    if (!targetId && notebookTitle) {
+      const match = notebooks.find(nb => nb.title.toLowerCase().trim() === notebookTitle.toLowerCase().trim());
+      if (match) targetId = match.id;
+    }
+    if (targetId) {
+      setActiveNotebookInitialPage(pageIndex || 0);
+      setActiveNotebookId(targetId);
+      setShowGlobalChat(false);
+    } else {
+      addToast(`Notebook "${notebookTitle || 'requested'}" not found in current workspace.`, 'error');
+    }
+  };
+
+  const handleOpenNoteFromCitation = (noteId, noteTitle = null) => {
+    let targetNote = null;
+    if (noteId) {
+      targetNote = notes.find(n => n.id === noteId);
+    } else if (noteTitle) {
+      targetNote = notes.find(n => n.title.toLowerCase().trim() === noteTitle.toLowerCase().trim());
+    }
+    if (targetNote) {
+      setActiveNote(targetNote);
+      setShowGlobalChat(false);
+    } else {
+      addToast(`Note "${noteTitle || 'requested'}" not found in current workspace.`, 'error');
+    }
+  };
+
   return (
     <div className="app-container">
       {/* Toast Alerts */}
@@ -194,6 +242,8 @@ export default function App() {
         onNewUpload={() => setShowUploader(prev => !prev)}
         onOpenUpload={() => setShowUploader(prev => !prev)}
         onOpenBatchNotebook={() => setShowBatchUploader(true)}
+        onOpenGlobalChat={() => setShowGlobalChat(true)}
+        onOpenTelemetry={() => setShowTelemetryModal(true)}
         stats={stats}
         onRefresh={() => loadData(true)}
         refreshing={refreshing}
@@ -524,8 +574,35 @@ export default function App() {
       {activeNotebookId && (
         <NotebookReaderModal
           notebookId={activeNotebookId}
-          onClose={() => setActiveNotebookId(null)}
+          initialPageIndex={activeNotebookInitialPage}
+          onClose={() => {
+            setActiveNotebookId(null);
+            setActiveNotebookInitialPage(0);
+          }}
           onNotebookUpdated={loadData}
+          onSwitchNotebook={(nbId) => {
+            setActiveNotebookId(nbId);
+            setActiveNotebookInitialPage(0);
+          }}
+          showToast={addToast}
+        />
+      )}
+
+      {/* Global Workspace AI Knowledge Hub (Federated Cross-Notebook RAG) */}
+      {showGlobalChat && (
+        <GlobalWorkspaceChatModal
+          onClose={() => setShowGlobalChat(false)}
+          onOpenNotebook={handleOpenNotebookFromCitation}
+          onOpenNote={handleOpenNoteFromCitation}
+          stats={stats}
+          showToast={addToast}
+        />
+      )}
+
+      {/* LLMOps Telemetry & Hybrid Fallback Observability Dashboard */}
+      {showTelemetryModal && (
+        <LLMOpsModal
+          onClose={() => setShowTelemetryModal(false)}
           showToast={addToast}
         />
       )}

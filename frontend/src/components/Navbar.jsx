@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sparkles, Key, FileText, Check, X, RefreshCw, AlertCircle, Loader2, BookOpen, Layers } from 'lucide-react';
+import { Sparkles, Key, FileText, Check, X, RefreshCw, AlertCircle, Loader2, BookOpen, Layers, Globe, Activity } from 'lucide-react';
 import { api } from '../services/api';
 
 export default function Navbar({ 
@@ -8,6 +8,8 @@ export default function Navbar({
   onNewUpload, 
   onOpenUpload, 
   onOpenBatchNotebook,
+  onOpenGlobalChat,
+  onOpenTelemetry,
   activeTab = 'notes', // 'notes' | 'notebooks'
   onChangeTab,
   stats, 
@@ -73,40 +75,46 @@ export default function Navbar({
       zIndex: 100,
       marginBottom: '20px'
     }}>
-      <div className="container" style={{
+      <div style={{
+        maxWidth: '1440px',
+        margin: '0 auto',
+        padding: '0 20px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        height: '70px',
-        padding: '0',
-        flexWrap: 'wrap'
+        height: '66px',
+        flexWrap: 'nowrap',
+        gap: '12px',
+        overflowX: 'auto'
       }}>
-        {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Brand & Tab Navigation */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div style={{
-              width: '38px',
-              height: '38px',
-              borderRadius: '12px',
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
               background: 'linear-gradient(135deg, var(--accent-primary) 0%, #06b6d4 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              boxShadow: '0 0 15px rgba(99, 102, 241, 0.4)'
+              boxShadow: '0 0 14px rgba(99, 102, 241, 0.35)',
+              flexShrink: 0
             }}>
-              <BookOpen size={20} color="#ffffff" />
+              <BookOpen size={18} color="#ffffff" />
             </div>
             <div>
-              <span style={{ fontSize: '1.2rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff' }}>
+              <span style={{ fontSize: '1.15rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#ffffff', whiteSpace: 'nowrap' }}>
                 NoteExtract <span style={{ color: 'var(--accent-secondary)' }}>AI</span>
               </span>
               <span style={{
                 display: 'block',
-                fontSize: '0.7rem',
+                fontSize: '0.68rem',
                 color: 'var(--text-muted)',
-                fontWeight: 500
+                fontWeight: 500,
+                whiteSpace: 'nowrap'
               }}>
-                Notes, Multi-Page Notebooks & PDF Export
+                Grounded Notes & Notebooks RAG
               </span>
             </div>
           </div>
@@ -118,48 +126,50 @@ export default function Navbar({
               background: 'rgba(15, 23, 42, 0.7)',
               borderRadius: 'var(--radius-md)',
               border: '1px solid var(--border-subtle)',
-              padding: '3px',
-              marginLeft: '10px'
+              padding: '2px',
+              marginLeft: '6px'
             }}>
               <button
                 onClick={() => onChangeTab('notes')}
                 style={{
-                  padding: '6px 14px',
+                  padding: '5px 12px',
                   borderRadius: '6px',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: '0.82rem',
+                  fontSize: '0.8rem',
                   fontWeight: 600,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: '5px',
+                  whiteSpace: 'nowrap',
                   background: activeTab === 'notes' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
                   color: activeTab === 'notes' ? '#ffffff' : 'var(--text-muted)',
                   transition: 'all 0.15s ease'
                 }}
               >
-                <FileText size={14} />
+                <FileText size={13} />
                 <span>Single Notes</span>
               </button>
 
               <button
                 onClick={() => onChangeTab('notebooks')}
                 style={{
-                  padding: '6px 14px',
+                  padding: '5px 12px',
                   borderRadius: '6px',
                   border: 'none',
                   cursor: 'pointer',
-                  fontSize: '0.82rem',
+                  fontSize: '0.8rem',
                   fontWeight: 600,
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '6px',
+                  gap: '5px',
+                  whiteSpace: 'nowrap',
                   background: activeTab === 'notebooks' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
                   color: activeTab === 'notebooks' ? '#ffffff' : 'var(--text-muted)',
                   transition: 'all 0.15s ease'
                 }}
               >
-                <Layers size={14} />
+                <Layers size={13} />
                 <span>Notebooks ({stats?.total_notebooks || 0})</span>
               </button>
             </div>
@@ -167,7 +177,41 @@ export default function Navbar({
         </div>
 
         {/* Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+          {onOpenGlobalChat && (
+            <button
+              id="btn-global-ai-hub"
+              className="btn btn-secondary btn-sm"
+              onClick={onOpenGlobalChat}
+              title="Search and chat across all notebooks & notes with Grounded Federated RAG (Ctrl+K)"
+              style={{
+                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(6, 182, 212, 0.18) 100%)',
+                border: '1px solid rgba(99, 102, 241, 0.45)',
+                color: '#e0e7ff',
+                boxShadow: '0 0 12px rgba(99, 102, 241, 0.15)',
+                fontWeight: 700,
+                padding: '6px 12px',
+                whiteSpace: 'nowrap',
+                gap: '6px'
+              }}
+            >
+              <Globe size={14} color="#67e8f9" />
+              <span>Global AI Hub</span>
+              <kbd style={{
+                background: 'rgba(0, 0, 0, 0.4)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '4px',
+                padding: '1px 5px',
+                fontSize: '0.66rem',
+                color: 'var(--text-dim)',
+                marginLeft: '1px',
+                fontFamily: 'var(--font-mono)'
+              }}>
+                Ctrl+K
+              </kbd>
+            </button>
+          )}
+
           {onRefresh && (
             <button
               className="btn btn-ghost btn-icon"
@@ -175,7 +219,7 @@ export default function Navbar({
               title="Refresh from SQLite"
               disabled={refreshing}
             >
-              <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} />
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
             </button>
           )}
 
@@ -185,19 +229,48 @@ export default function Navbar({
               setVerifyResult(null);
               setShowKeyModal(true);
             }}
-            style={{ borderColor: hasKey ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)' }}
+            style={{
+              borderColor: hasKey ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)',
+              whiteSpace: 'nowrap',
+              padding: '6px 11px',
+              fontSize: '0.8rem'
+            }}
+            title={hasKey ? 'Google Gemini API key is active' : 'Configure Gemini API Key'}
           >
-            <Key size={14} color={hasKey ? '#34d399' : 'currentColor'} />
-            <span>{hasKey ? 'Gemini Free Key (Active)' : 'Set Free Gemini Key'}</span>
+            <Key size={13} color={hasKey ? '#34d399' : 'currentColor'} />
+            <span>{hasKey ? 'Gemini Active' : 'Gemini Key'}</span>
           </button>
+
+          {onOpenTelemetry && (
+            <button
+              id="btn-llmops-telemetry"
+              className="btn btn-secondary btn-sm"
+              onClick={onOpenTelemetry}
+              title="LLMOps Telemetry, Latency Profiler & Fallback Health Monitor"
+              style={{
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.35)',
+                color: '#34d399',
+                padding: '6px 11px',
+                whiteSpace: 'nowrap',
+                fontSize: '0.8rem',
+                gap: '5px',
+                fontWeight: 600
+              }}
+            >
+              <Activity size={13} color="#34d399" />
+              <span>Telemetry</span>
+            </button>
+          )}
 
           {activeTab === 'notebooks' ? (
             <button 
               className="btn btn-primary btn-sm" 
               onClick={onOpenBatchNotebook}
+              style={{ whiteSpace: 'nowrap', padding: '6px 13px', fontSize: '0.8rem' }}
             >
-              <Sparkles size={15} />
-              <span>+ New Multi-Page Notebook</span>
+              <Sparkles size={14} />
+              <span>+ New Notebook</span>
             </button>
           ) : (
             <>
@@ -205,17 +278,19 @@ export default function Navbar({
                 id="btn-add-text-note"
                 className="btn btn-secondary btn-sm" 
                 onClick={handleOpenNote}
+                style={{ whiteSpace: 'nowrap', padding: '6px 11px', fontSize: '0.8rem' }}
               >
-                + Text Note
+                + Note
               </button>
 
               <button 
                 id="btn-transcribe-photo"
                 className="btn btn-primary btn-sm" 
                 onClick={handleOpenUpload}
+                style={{ whiteSpace: 'nowrap', padding: '6px 13px', fontSize: '0.8rem' }}
               >
-                <Sparkles size={15} />
-                <span>Transcribe Single Photo</span>
+                <Sparkles size={14} />
+                <span>Transcribe Photo</span>
               </button>
             </>
           )}

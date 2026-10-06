@@ -1,8 +1,13 @@
 import os
 import re
 import json
+import time
 import urllib.request
 import urllib.error
+try:
+    from backend.db import log_llm_telemetry
+except ImportError:
+    from db import log_llm_telemetry
 
 def extract_page_citations(text):
     """
@@ -85,6 +90,7 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, cu
         "4. Be concise, highly accurate, and academic in tone."
     )
 
+    start_time = time.time()
     page_focus_hint = ""
     if current_page_number:
         if scope == "current_page":
@@ -92,7 +98,13 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, cu
         else:
             page_focus_hint = f"\nCONTEXT HINT: The user is currently reading Page {current_page_number}. If the user refers to 'this page', 'here', or 'current notes', resolve it to Page {current_page_number}.\n"
 
-    prompt = f"{system_instruction}{page_focus_hint}\n{context}\n\n"
+    system_math_hint = (
+        "\nFORMATTING RULES:\n"
+        "- Math Equations: Use LaTeX `$equation$` for inline formulas and `$$equation$$` for standalone display equations.\n"
+        "- Diagrams & Flowcharts: When helpful or requested, generate clean, valid Mermaid diagrams wrapped in ```mermaid ... ``` codeblocks.\n"
+    )
+
+    prompt = f"{system_instruction}{system_math_hint}{page_focus_hint}\n{context}\n\n"
     
     # Append recent conversation history
     if chat_history:
@@ -105,6 +117,7 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, cu
     prompt += f"USER QUESTION: {user_query}\nASSISTANT ANSWER (Remember to include [Page X] citations):"
 
     key = api_key or os.environ.get("GEMINI_API_KEY")
+    p_tokens = int(len(prompt.split()) * 1.3)
     
     # 1. Try Gemini GenAI Interactions API (gemini-3.6-flash / gemini-3.5-flash)
     if key:
@@ -139,9 +152,22 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, cu
                             for c in step.get("content", []):
                                 if c.get("type") == "text" and "text" in c:
                                     output_texts.append(c["text"])
+                    latency_ms = int((time.time() - start_time) * 1000)
                     if output_texts:
                         reply_text = "\n".join(output_texts).strip()
                         citations = extract_page_citations(reply_text)
+                        c_tokens = int(len(reply_text.split()) * 1.3)
+                        log_llm_telemetry(
+                            request_type="notebook_rag",
+                            model_used=model_name,
+                            is_fallback=False,
+                            latency_ms=latency_ms,
+                            prompt_tokens=p_tokens,
+                            completion_tokens=c_tokens,
+                            total_tokens=p_tokens + c_tokens,
+                            estimated_cost_usd=round((p_tokens * 0.000075 + c_tokens * 0.0003) / 1000, 6),
+                            status="success"
+                        )
                         return {
                             "reply": reply_text,
                             "citations": citations,
@@ -151,6 +177,18 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, cu
                     if "output_text" in data and data["output_text"]:
                         reply_text = data["output_text"].strip()
                         citations = extract_page_citations(reply_text)
+                        c_tokens = int(len(reply_text.split()) * 1.3)
+                        log_llm_telemetry(
+                            request_type="notebook_rag",
+                            model_used=model_name,
+                            is_fallback=False,
+                            latency_ms=latency_ms,
+                            prompt_tokens=p_tokens,
+                            completion_tokens=c_tokens,
+                            total_tokens=p_tokens + c_tokens,
+                            estimated_cost_usd=round((p_tokens * 0.000075 + c_tokens * 0.0003) / 1000, 6),
+                            status="success"
+                        )
                         return {
                             "reply": reply_text,
                             "citations": citations,
@@ -162,6 +200,7 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, cu
 
     # 2. Local Fallback Semantic Keyword Retrieval Engine (When offline or no API key)
     print("[RAG] Using local keyword search fallback engine...")
+    fallback_reason = "no_api_key" if not key else "gemini_api_unavailable"
     query_words = set(re.findall(r'\w+', user_query.lower()))
     stopwords = {"what", "is", "are", "the", "a", "an", "how", "why", "where", "when", "can", "you", "tell", "me", "about", "in", "of", "and", "or", "for", "to"}
     keywords = query_words - stopwords
@@ -185,6 +224,7 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, cu
             matching_pages.append((p_num, score, p))
 
     matching_pages.sort(key=lambda x: x[1], reverse=True)
+    latency_ms = int((time.time() - start_time) * 1000)
 
     if matching_pages:
         top_pages = matching_pages[:3]
@@ -198,7 +238,19 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, cu
         reply_text = (
             f"Here are the relevant sections found in your notebook for **\"{user_query}\"**:\n\n"
             + "\n\n".join(snippets)
-            + "\n\n*(Tip: Set your free Gemini API key in the navbar for deep conversational reasoning & automatic study quizzes!)*"
+            + "\n\n*(Tip: Set your free Gemini API key in the navbar for deep conversational reasoning, LaTeX math & Mermaid diagram generation!)*"
+        )
+        c_tokens = int(len(reply_text.split()) * 1.3)
+        log_llm_telemetry(
+            request_type="notebook_rag",
+            model_used="local-keyword-rag",
+            is_fallback=True,
+            fallback_reason=fallback_reason,
+            latency_ms=latency_ms,
+            prompt_tokens=p_tokens,
+            completion_tokens=c_tokens,
+            total_tokens=p_tokens + c_tokens,
+            status="fallback"
         )
         return {
             "reply": reply_text,
@@ -207,8 +259,21 @@ def query_notebook_rag(notebook, user_query, chat_history=None, api_key=None, cu
             "source": "local-fallback"
         }
     else:
+        reply_text = f"No direct mentions found for **\"{user_query}\"** across the {len(notebook.get('pages', []))} page(s) in this notebook."
+        c_tokens = int(len(reply_text.split()) * 1.3)
+        log_llm_telemetry(
+            request_type="notebook_rag",
+            model_used="local-keyword-rag",
+            is_fallback=True,
+            fallback_reason=fallback_reason,
+            latency_ms=latency_ms,
+            prompt_tokens=p_tokens,
+            completion_tokens=c_tokens,
+            total_tokens=p_tokens + c_tokens,
+            status="fallback"
+        )
         return {
-            "reply": f"No direct mentions found for **\"{user_query}\"** across the {len(notebook.get('pages', []))} page(s) in this notebook.",
+            "reply": reply_text,
             "citations": [],
             "model": "local-keyword-rag",
             "source": "local-fallback"
@@ -378,6 +443,7 @@ def query_workspace_rag(workspace_data, user_query, chat_history=None, api_key=N
             "source": "system"
         }
 
+    start_time = time.time()
     chat_history = chat_history or []
     context = format_workspace_context(workspace_data)
 
@@ -388,8 +454,10 @@ def query_workspace_rag(workspace_data, user_query, chat_history=None, api_key=N
         "1. When citing a notebook page, you MUST use the exact format: `[Notebook: Notebook Title | Page X]` (e.g. `[Notebook: Linear Algebra | Page 3]`).\n"
         "2. When citing a standalone note, you MUST use the format: `[Note: Note Title]` (e.g. `[Note: Quick Formulas]`).\n"
         "3. Highlight meaningful cross-links and connections when a concept from one notebook connects with, builds upon, or applies to another notebook.\n"
-        "4. Structure your response with clean Markdown headings, bullet points, and exact source citations.\n"
-        "5. If a topic is not found anywhere in their notes, state clearly: 'This is not mentioned in any of your uploaded notes.', and then offer a brief general explanation while clarifying it is outside their notes."
+        "4. MATHEMATICAL EQUATIONS (LaTeX): Convert and output all equations/formulas using standard LaTeX `$inline$` or `$$display$$` syntax.\n"
+        "5. DIAGRAMS & ARCHITECTURES (Mermaid): When explaining architectures, process flows, or concept hierarchies across subjects, generate clean Mermaid code in ```mermaid ... ``` codeblocks.\n"
+        "6. Structure your response with clean Markdown headings, bullet points, and exact source citations.\n"
+        "7. If a topic is not found anywhere in their notes, state clearly: 'This is not mentioned in any of your uploaded notes.', and then offer a brief general explanation while clarifying it is outside their notes."
     )
 
     prompt = f"{system_instruction}\n\n{context}\n\n"
@@ -404,6 +472,7 @@ def query_workspace_rag(workspace_data, user_query, chat_history=None, api_key=N
     prompt += f"USER QUESTION: {user_query}\nASSISTANT ANSWER (Include [Notebook: Name | Page X] and [Note: Name] citations):"
 
     key = api_key or os.environ.get("GEMINI_API_KEY")
+    p_tokens = int(len(prompt.split()) * 1.3)
 
     # 1. Try Gemini GenAI Interactions API (gemini-3.6-flash / gemini-3.5-flash)
     if key:
@@ -433,9 +502,22 @@ def query_workspace_rag(workspace_data, user_query, chat_history=None, api_key=N
                             for c in step.get("content", []):
                                 if c.get("type") == "text" and "text" in c:
                                     output_texts.append(c["text"])
+                    latency_ms = int((time.time() - start_time) * 1000)
                     if output_texts:
                         reply_text = "\n".join(output_texts).strip()
                         citations = extract_workspace_citations(reply_text, workspace_data)
+                        c_tokens = int(len(reply_text.split()) * 1.3)
+                        log_llm_telemetry(
+                            request_type="workspace_rag",
+                            model_used=model_name,
+                            is_fallback=False,
+                            latency_ms=latency_ms,
+                            prompt_tokens=p_tokens,
+                            completion_tokens=c_tokens,
+                            total_tokens=p_tokens + c_tokens,
+                            estimated_cost_usd=round((p_tokens * 0.000075 + c_tokens * 0.0003) / 1000, 6),
+                            status="success"
+                        )
                         return {
                             "reply": reply_text,
                             "citations": citations,
@@ -445,6 +527,18 @@ def query_workspace_rag(workspace_data, user_query, chat_history=None, api_key=N
                     if "output_text" in data and data["output_text"]:
                         reply_text = data["output_text"].strip()
                         citations = extract_workspace_citations(reply_text, workspace_data)
+                        c_tokens = int(len(reply_text.split()) * 1.3)
+                        log_llm_telemetry(
+                            request_type="workspace_rag",
+                            model_used=model_name,
+                            is_fallback=False,
+                            latency_ms=latency_ms,
+                            prompt_tokens=p_tokens,
+                            completion_tokens=c_tokens,
+                            total_tokens=p_tokens + c_tokens,
+                            estimated_cost_usd=round((p_tokens * 0.000075 + c_tokens * 0.0003) / 1000, 6),
+                            status="success"
+                        )
                         return {
                             "reply": reply_text,
                             "citations": citations,
@@ -456,6 +550,7 @@ def query_workspace_rag(workspace_data, user_query, chat_history=None, api_key=N
 
     # 2. Local Fallback Multi-Document Keyword Ranker
     print("[Workspace RAG] Using local multi-document fallback search...")
+    fallback_reason = "no_api_key" if not key else "gemini_api_unavailable"
     query_words = set(re.findall(r'\w+', user_query.lower()))
     stopwords = {"what", "is", "are", "the", "a", "an", "how", "why", "where", "when", "can", "you", "tell", "me", "about", "in", "of", "and", "or", "for", "to"}
     keywords = query_words - stopwords
@@ -496,6 +591,7 @@ def query_workspace_rag(workspace_data, user_query, chat_history=None, api_key=N
             })
 
     scored_items.sort(key=lambda x: x["score"], reverse=True)
+    latency_ms = int((time.time() - start_time) * 1000)
 
     if scored_items:
         top_items = scored_items[:4]
@@ -528,7 +624,19 @@ def query_workspace_rag(workspace_data, user_query, chat_history=None, api_key=N
         reply_text = (
             f"Here are the relevant cross-document insights across your knowledge base for **\"{user_query}\"**:\n\n"
             + "\n\n".join(snippets)
-            + "\n\n*(Tip: Add your Gemini API key in the navbar for automatic cross-notebook synthesis & multi-subject study guides!)*"
+            + "\n\n*(Tip: Add your Gemini API key in the navbar for automatic cross-notebook synthesis, LaTeX formulas & Mermaid diagrams!)*"
+        )
+        c_tokens = int(len(reply_text.split()) * 1.3)
+        log_llm_telemetry(
+            request_type="workspace_rag",
+            model_used="local-workspace-rag",
+            is_fallback=True,
+            fallback_reason=fallback_reason,
+            latency_ms=latency_ms,
+            prompt_tokens=p_tokens,
+            completion_tokens=c_tokens,
+            total_tokens=p_tokens + c_tokens,
+            status="fallback"
         )
         return {
             "reply": reply_text,
@@ -537,8 +645,21 @@ def query_workspace_rag(workspace_data, user_query, chat_history=None, api_key=N
             "source": "local-fallback"
         }
     else:
+        reply_text = f"No direct mentions found for **\"{user_query}\"** across your {len(notebooks)} notebook(s) and {len(notes)} note(s)."
+        c_tokens = int(len(reply_text.split()) * 1.3)
+        log_llm_telemetry(
+            request_type="workspace_rag",
+            model_used="local-workspace-rag",
+            is_fallback=True,
+            fallback_reason=fallback_reason,
+            latency_ms=latency_ms,
+            prompt_tokens=p_tokens,
+            completion_tokens=c_tokens,
+            total_tokens=p_tokens + c_tokens,
+            status="fallback"
+        )
         return {
-            "reply": f"No direct mentions found for **\"{user_query}\"** across your {len(notebooks)} notebook(s) and {len(notes)} note(s).",
+            "reply": reply_text,
             "citations": [],
             "model": "local-workspace-rag",
             "source": "local-fallback"

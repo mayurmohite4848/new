@@ -10,28 +10,40 @@ import {
   Trash2, 
   Plus, 
   Sparkles, 
-  BookOpen,
-  Copy,
-  Check,
-  Edit3,
-  UploadCloud,
-  Loader2,
-  Columns2,
-  Eye,
-  Maximize2,
-  Bot,
-  MessageSquare
+  BookOpen, 
+  Copy, 
+  Check, 
+  Edit3, 
+  UploadCloud, 
+  Loader2, 
+  Columns2, 
+  Eye, 
+  Maximize2, 
+  Bot, 
+  MessageSquare,
+  Link2,
+  Compass,
+  Code2
 } from 'lucide-react';
 import { api } from '../services/api';
 import NotebookChatDrawer from './NotebookChatDrawer';
+import NoteContentRenderer from './NoteContentRenderer';
 
-export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpdated, showToast }) {
+export default function NotebookReaderModal({ 
+  notebookId, 
+  initialPageIndex = 0,
+  onClose, 
+  onNotebookUpdated, 
+  onSwitchNotebook,
+  showToast 
+}) {
   const [notebook, setNotebook] = useState(null);
   const [loading, setLoading] = useState(true);
   const [addingPages, setAddingPages] = useState(false);
-  const [activePageIndex, setActivePageIndex] = useState(0);
+  const [activePageIndex, setActivePageIndex] = useState(initialPageIndex || 0);
   const [savingPage, setSavingPage] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [relatedNotebooks, setRelatedNotebooks] = useState([]);
 
   // 3-Way View Layout: 'split' | 'notes' | 'photo'
   const [viewLayout, setViewLayout] = useState('split');
@@ -43,6 +55,7 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
   // Active page editing state
   const [pageTitle, setPageTitle] = useState('');
   const [pageContent, setPageContent] = useState('');
+  const [pageViewMode, setPageViewMode] = useState('preview'); // 'edit' | 'preview'
   const uploadInputRef = useRef(null);
 
   // Fetch full notebook with all pages
@@ -52,14 +65,12 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
       const nb = res.notebook;
       setNotebook(nb);
       if (nb.pages && nb.pages.length > 0) {
-        const idx = targetPageIndex !== null ? targetPageIndex : activePageIndex;
+        const idx = targetPageIndex !== null ? targetPageIndex : (initialPageIndex || 0);
         const safeIdx = Math.min(idx, nb.pages.length - 1);
         const p = nb.pages[safeIdx] || nb.pages[0];
         setPageTitle(p.title || `Page ${p.page_number}`);
         setPageContent(p.content || p.extracted_text || '');
-        if (targetPageIndex !== null) {
-          setActivePageIndex(safeIdx);
-        }
+        setActivePageIndex(safeIdx);
       }
     } catch (err) {
       if (showToast) showToast(err.message || 'Failed to load notebook.', 'error');
@@ -67,11 +78,20 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
     } finally {
       setLoading(false);
     }
-  }, [notebookId, activePageIndex, showToast, onClose]);
+  }, [notebookId, initialPageIndex, showToast, onClose]);
 
   useEffect(() => {
     fetchNotebook();
   }, [fetchNotebook]);
+
+  // Fetch cross-notebook semantic links
+  useEffect(() => {
+    if (notebookId) {
+      api.getRelatedNotebooks(notebookId)
+        .then(res => setRelatedNotebooks(res.related_notebooks || []))
+        .catch(err => console.warn('Could not fetch related notebooks:', err));
+    }
+  }, [notebookId]);
 
   const activePage = notebook?.pages?.[activePageIndex] || null;
   const totalPages = notebook?.pages?.length || 0;
@@ -444,6 +464,62 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
           </div>
         </div>
 
+        {/* Semantic Cross-Notebook Links Banner (if related notebooks exist) */}
+        {relatedNotebooks && relatedNotebooks.length > 0 && (
+          <div style={{
+            padding: '6px 20px',
+            background: 'linear-gradient(90deg, rgba(99, 102, 241, 0.12) 0%, rgba(6, 182, 212, 0.08) 100%)',
+            borderBottom: '1px solid rgba(99, 102, 241, 0.25)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            overflowX: 'auto',
+            fontSize: '0.78rem',
+            flexShrink: 0
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#a5b4fc', fontWeight: 700, whiteSpace: 'nowrap' }}>
+              <Link2 size={13} />
+              <span>Related Notebooks:</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {relatedNotebooks.map((rel) => (
+                <button
+                  key={rel.id}
+                  onClick={() => {
+                    if (onSwitchNotebook) {
+                      onSwitchNotebook(rel.id);
+                    }
+                  }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    background: 'rgba(30, 41, 59, 0.75)',
+                    border: '1px solid rgba(99, 102, 241, 0.35)',
+                    borderRadius: '6px',
+                    padding: '2px 8px',
+                    color: '#e0e7ff',
+                    cursor: 'pointer',
+                    fontSize: '0.74rem',
+                    fontWeight: 600,
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s ease'
+                  }}
+                  title={`Shared concepts: ${rel.common_words ? rel.common_words.join(', ') : ''}`}
+                >
+                  <BookOpen size={11} color={rel.cover_color || '#818cf8'} />
+                  <span>{rel.title}</span>
+                  {rel.common_words && rel.common_words.length > 0 && (
+                    <span style={{ color: 'var(--text-dim)', fontSize: '0.68rem' }}>
+                      ({rel.common_words.slice(0, 2).join(', ')})
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Main Body: Dynamic Grid Container with minHeight: 0 and minWidth: 0 */}
         <div style={{
           display: 'grid',
@@ -528,23 +604,96 @@ export default function NotebookReaderModal({ notebookId, onClose, onNotebookUpd
               </div>
 
               <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '6px' }}>
-                  PAGE CONTENT (EDITABLE PLAIN TEXT):
-                </label>
-                <textarea
-                  className="textarea"
-                  value={pageContent}
-                  onChange={e => setPageContent(e.target.value)}
-                  placeholder="Write or edit notes for this page..."
-                  style={{
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '8px'
+                }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-dim)' }}>
+                    PAGE CONTENT:
+                  </label>
+
+                  {/* Mode Switcher */}
+                  <div style={{
+                    display: 'flex',
+                    background: 'rgba(15, 23, 42, 0.8)',
+                    borderRadius: '6px',
+                    border: '1px solid var(--border-subtle)',
+                    padding: '2px'
+                  }}>
+                    <button
+                      onClick={() => setPageViewMode('edit')}
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: '4px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        background: pageViewMode === 'edit' ? 'rgba(99, 102, 241, 0.35)' : 'transparent',
+                        color: pageViewMode === 'edit' ? '#ffffff' : 'var(--text-muted)'
+                      }}
+                    >
+                      <Edit3 size={12} />
+                      <span>Edit Raw</span>
+                    </button>
+                    <button
+                      onClick={() => setPageViewMode('preview')}
+                      style={{
+                        padding: '3px 10px',
+                        borderRadius: '4px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: '0.74rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        background: pageViewMode === 'preview' ? 'linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(99, 102, 241, 0.3) 100%)' : 'transparent',
+                        color: pageViewMode === 'preview' ? '#38bdf8' : 'var(--text-muted)'
+                      }}
+                    >
+                      <Eye size={12} />
+                      <span>Rendered Preview (Math & Diagrams)</span>
+                    </button>
+                  </div>
+                </div>
+
+                {pageViewMode === 'edit' ? (
+                  <textarea
+                    className="textarea"
+                    value={pageContent}
+                    onChange={e => setPageContent(e.target.value)}
+                    placeholder="Write or edit notes for this page... Supports LaTeX ($math$) and Mermaid (```mermaid) diagrams"
+                    style={{
+                      flex: 1,
+                      minHeight: '280px',
+                      fontFamily: 'var(--font-sans)',
+                      fontSize: '0.94rem',
+                      lineHeight: '1.7',
+                      padding: '16px'
+                    }}
+                  />
+                ) : (
+                  <div style={{
                     flex: 1,
                     minHeight: '280px',
-                    fontFamily: 'var(--font-sans)',
-                    fontSize: '0.94rem',
-                    lineHeight: '1.7',
-                    padding: '16px'
-                  }}
-                />
+                    padding: '16px',
+                    background: 'rgba(15, 23, 42, 0.5)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    overflowY: 'auto'
+                  }}>
+                    <NoteContentRenderer 
+                      content={pageContent} 
+                      onJumpToPage={(targetIdx) => handleSelectPage(targetIdx)}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}

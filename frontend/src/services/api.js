@@ -270,8 +270,41 @@ export const api = {
     });
   },
 
+  async getRelatedNotebooks(notebookId) {
+    return request(`/api/notebooks/${notebookId}/related`);
+  },
+
+  // ==========================================
+  // GLOBAL WORKSPACE FEDERATED RAG CHAT API
+  // ==========================================
+
+  async chatWithWorkspace(message) {
+    const apiKey = (localStorage.getItem('gemini_api_key') || '').trim();
+    const headers = { 'Content-Type': 'application/json' };
+    if (apiKey) {
+      headers['X-Gemini-Key'] = apiKey;
+    }
+
+    return request('/api/workspace/chat', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ message, gemini_api_key: apiKey })
+    });
+  },
+
+  async getWorkspaceChatHistory() {
+    return request('/api/workspace/chat');
+  },
+
+  async clearWorkspaceChatHistory() {
+    return request('/api/workspace/chat', {
+      method: 'DELETE'
+    });
+  },
+
   // Global Statistics
   async getStats() {
     return request('/api/stats');
   }
 };
+

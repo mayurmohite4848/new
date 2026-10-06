@@ -98,6 +98,18 @@ def init_db(db_path=None):
         );
     """)
 
+    # 5. Workspace Global Chat Messages Table (Cross-Notebook Federated RAG)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS workspace_chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            citations TEXT,
+            model_used TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
     # Check for existing table and migrate new columns if necessary
     cursor.execute("PRAGMA table_info(notes);")
     columns = [row["name"] for row in cursor.fetchall()]
@@ -125,6 +137,7 @@ def init_db(db_path=None):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_notebooks_created ON notebooks(created_at DESC);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_pages_notebook_order ON notebook_pages(notebook_id, page_number ASC);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notebook ON notebook_chat_messages(notebook_id, created_at ASC);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_workspace_chat_created ON workspace_chat_messages(created_at ASC);")
 
     conn.commit()
     conn.close()
@@ -751,3 +764,94 @@ def clear_notebook_chat_messages(notebook_id, db_path=None):
     conn.commit()
     conn.close()
     return deleted
+
+# =========================================================================
+# GLOBAL WORKSPACE FEDERATED RAG & CHAT
+# =========================================================================
+
+def get_all_workspace_knowledge(db_path=None):
+    """
+    Retrieves complete knowledge base across all multi-page notebooks and standalone notes.
+    Returns:
+      {
+        "notebooks": list of notebooks with all page contents,
+        "notes": list of standalone notes
+      }
+    """
+    # 1. Fetch all notebooks with their pages
+    all_notebooks = get_all_notebooks(db_path=db_path)
+    notebooks_with_pages = []
+    for nb in all_notebooks:
+        full_nb = get_notebook_by_id(nb["id"], include_pages=True, db_path=db_path)
+        if full_nb:
+            notebooks_with_pages.append(full_nb)
+
+    # 2. Fetch all standalone notes
+    all_notes = get_all_notes(db_path=db_path)
+
+    return {
+        "notebooks": notebooks_with_pages,
+        "notes": all_notes
+    }
+
+def get_workspace_chat_messages(db_path=None):
+    """Retrieves all global workspace chat messages in chronological order."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT * FROM workspace_chat_messages 
+        ORDER BY created_at ASC, id ASC
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+
+    messages = []
+    for r in rows:
+        d = dict(r)
+        if d.get("citations"):
+            try:
+                d["citations"] = json.loads(d["citations"])
+            except Exception:
+                d["citations"] = []
+        else:
+            d["citations"] = []
+        messages.append(d)
+    return messages
+
+def save_workspace_chat_message(role, content, citations=None, model_used=None, db_path=None):
+    """Saves a global workspace user query or assistant reply to history."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cit_json = json.dumps(citations or []) if citations else None
+
+    cursor.execute("""
+        INSERT INTO workspace_chat_messages (role, content, citations, model_used)
+        VALUES (?, ?, ?, ?)
+    """, (role, content, cit_json, model_used))
+    msg_id = cursor.lastrowid
+    conn.commit()
+
+    cursor.execute("SELECT * FROM workspace_chat_messages WHERE id = ?", (msg_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    d = dict(row)
+    if d.get("citations"):
+        try:
+            d["citations"] = json.loads(d["citations"])
+        except Exception:
+            d["citations"] = []
+    else:
+        d["citations"] = []
+    return d
+
+def clear_workspace_chat_messages(db_path=None):
+    """Clears all global workspace conversation history."""
+    conn = get_db_connection(db_path)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM workspace_chat_messages")
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return deleted
+

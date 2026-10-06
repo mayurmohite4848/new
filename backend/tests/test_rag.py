@@ -116,5 +116,108 @@ class TestNotebookRAG(unittest.TestCase):
         history_res2 = self.client.get(f"/api/notebooks/{nb['id']}/chat")
         self.assertEqual(history_res2.get_json()["count"], 0)
 
+    def test_workspace_context_and_citations(self):
+        from backend.services.rag_service import format_workspace_context, extract_workspace_citations, query_workspace_rag
+        
+        workspace_data = {
+            "notebooks": [
+                {
+                    "id": 1,
+                    "title": "Linear Algebra",
+                    "subject_tag": "Math",
+                    "pages": [
+                        {"page_number": 1, "title": "Vectors", "content": "Vector spaces have basis vectors."},
+                        {"page_number": 2, "title": "Eigenvalues", "content": "Ax = lambda x defines eigenvalue equations."}
+                    ]
+                },
+                {
+                    "id": 2,
+                    "title": "Machine Learning",
+                    "subject_tag": "AI",
+                    "pages": [
+                        {"page_number": 1, "title": "PCA", "content": "PCA uses eigenvectors for dimensionality reduction."}
+                    ]
+                }
+            ],
+            "notes": [
+                {
+                    "id": 10,
+                    "title": "Quick Formulas",
+                    "content": "Determinant of 2x2 matrix is ad - bc.",
+                    "tags": ["math", "cheatsheet"]
+                }
+            ]
+        }
+
+        # 1. Format workspace context
+        context = format_workspace_context(workspace_data)
+        self.assertIn("NOTEBOOK [ID: 1]: \"Linear Algebra\"", context)
+        self.assertIn("NOTEBOOK [ID: 2]: \"Machine Learning\"", context)
+        self.assertIn("Note [ID: 10]: \"Quick Formulas\"", context)
+
+        # 2. Extract multi-document citations
+        sample_output = (
+            "Eigenvalues from [Notebook: Linear Algebra | Page 2] are directly utilized "
+            "in [Notebook: Machine Learning | Page 1] for PCA. Also see [Note: Quick Formulas]."
+        )
+        citations = extract_workspace_citations(sample_output, workspace_data)
+        self.assertEqual(len(citations), 3)
+        self.assertEqual(citations[0]["type"], "notebook_page")
+        self.assertEqual(citations[0]["notebook_title"], "Linear Algebra")
+        self.assertEqual(citations[0]["page_number"], 2)
+        self.assertEqual(citations[1]["notebook_title"], "Machine Learning")
+        self.assertEqual(citations[1]["page_number"], 1)
+        self.assertEqual(citations[2]["type"], "note")
+        self.assertEqual(citations[2]["note_title"], "Quick Formulas")
+
+        # 3. Test local multi-document fallback query
+        res = query_workspace_rag(workspace_data, "Where is PCA dimensionality reduction discussed?")
+        self.assertIn("Machine Learning", res["reply"])
+        self.assertTrue(len(res["citations"]) > 0)
+
+    def test_global_workspace_chat_api(self):
+        from backend.db import create_note
+        # 1. Create a notebook and a single note
+        nb = create_notebook(title="Neuroscience", subject_tag="Biology", db_path=self.db_path)
+        add_notebook_page(notebook_id=nb["id"], page_number=1, title="Neurons", content="Action potentials propagate across axons via myelin sheaths.", db_path=self.db_path)
+        create_note(title="Synapse Note", content="Neurotransmitters diffuse across synaptic clefts.", db_path=self.db_path)
+
+        # 2. POST to global workspace chat
+        res = self.client.post("/api/workspace/chat", json={
+            "message": "Explain how action potentials and synapses work in neuroscience"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertIn("reply", data)
+        self.assertIn("user_message", data)
+        self.assertIn("assistant_message", data)
+
+        # 3. GET workspace history
+        hist = self.client.get("/api/workspace/chat").get_json()
+        self.assertEqual(hist["count"], 2)
+
+        # 4. DELETE workspace history
+        del_res = self.client.delete("/api/workspace/chat")
+        self.assertEqual(del_res.status_code, 200)
+        hist2 = self.client.get("/api/workspace/chat").get_json()
+        self.assertEqual(hist2["count"], 0)
+
+    def test_cross_notebook_recommendations(self):
+        # 1. Create two related notebooks
+        nb1 = create_notebook(title="Calculus I", subject_tag="Math", db_path=self.db_path)
+        add_notebook_page(notebook_id=nb1["id"], page_number=1, title="Derivatives", content="Derivatives calculate the instantaneous rate of change.", db_path=self.db_path)
+
+        nb2 = create_notebook(title="Physics Mechanics", subject_tag="Physics", db_path=self.db_path)
+        add_notebook_page(notebook_id=nb2["id"], page_number=1, title="Velocity", content="Velocity is the instantaneous rate of change of position with respect to time.", db_path=self.db_path)
+
+        # 2. Call related endpoint
+        res = self.client.get(f"/api/notebooks/{nb1['id']}/related")
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertIn("related", data)
+        self.assertTrue(len(data["related"]) >= 1)
+        self.assertEqual(data["related"][0]["notebook_title"], "Physics Mechanics")
+
 if __name__ == "__main__":
     unittest.main()
+

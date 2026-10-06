@@ -414,3 +414,26 @@ def clear_chat(notebook_id):
 
     clear_notebook_chat_messages(notebook_id)
     return jsonify({"message": "Chat history cleared.", "notebook_id": notebook_id}), 200
+
+@notebooks_bp.route("/api/notebooks/<int:notebook_id>/related", methods=["GET"])
+def get_related_notebooks(notebook_id):
+    """Computes and returns related notebooks with shared topics and cross-links."""
+    from backend.services.rag_service import find_cross_notebook_links
+    from backend.db import get_all_notebooks
+    current_nb = get_notebook_by_id(notebook_id, include_pages=True)
+    if not current_nb:
+        return jsonify({"error": "Notebook not found."}), 404
+
+    all_notebooks = []
+    for nb in get_all_notebooks():
+        full_nb = get_notebook_by_id(nb["id"], include_pages=True)
+        if full_nb:
+            all_notebooks.append(full_nb)
+
+    recommendations = find_cross_notebook_links(current_nb, all_notebooks)
+    return jsonify({
+        "notebook_id": notebook_id,
+        "related": recommendations,
+        "count": len(recommendations)
+    }), 200
+

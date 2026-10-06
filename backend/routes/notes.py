@@ -363,3 +363,77 @@ def get_note_statistics():
     """Returns database summary stats and storage metrics."""
     stats = get_stats(current_app.config["UPLOAD_FOLDER"])
     return jsonify({"stats": stats}), 200
+
+# =========================================================================
+# GLOBAL WORKSPACE FEDERATED RAG & MULTI-DOCUMENT CHAT ENDPOINTS
+# =========================================================================
+
+@notes_bp.route("/api/workspace/chat", methods=["POST"])
+def workspace_global_chat():
+    """
+    Executes a Global Grounded RAG Query across all notebooks and notes in the workspace.
+    Returns synthesized answer with multi-document cross-citations.
+    """
+    from backend.services.rag_service import query_workspace_rag
+    from backend.db import (
+        get_all_workspace_knowledge,
+        get_workspace_chat_messages,
+        save_workspace_chat_message
+    )
+
+    data = request.get_json() or {}
+    user_query = (data.get("message") or "").strip()
+    if not user_query:
+        return jsonify({"error": "Message is required."}), 400
+
+    api_key = (request.headers.get("X-Gemini-Key") or request.form.get("gemini_api_key") or data.get("gemini_api_key") or "").strip()
+
+    # 1. Fetch entire workspace knowledge base
+    workspace_data = get_all_workspace_knowledge()
+    history = get_workspace_chat_messages()
+
+    # 2. Save user message to DB
+    user_msg = save_workspace_chat_message(
+        role="user",
+        content=user_query
+    )
+
+    # 3. Execute global workspace RAG query
+    rag_result = query_workspace_rag(
+        workspace_data=workspace_data,
+        user_query=user_query,
+        chat_history=history,
+        api_key=api_key
+    )
+
+    # 4. Save assistant reply with citations
+    assistant_msg = save_workspace_chat_message(
+        role="assistant",
+        content=rag_result["reply"],
+        citations=rag_result.get("citations", []),
+        model_used=rag_result.get("model", "gemini-3.6-flash")
+    )
+
+    return jsonify({
+        "reply": rag_result["reply"],
+        "citations": rag_result.get("citations", []),
+        "model": rag_result.get("model"),
+        "source": rag_result.get("source"),
+        "user_message": user_msg,
+        "assistant_message": assistant_msg
+    }), 200
+
+@notes_bp.route("/api/workspace/chat", methods=["GET"])
+def get_workspace_chat_history():
+    """Retrieves full global workspace conversation history."""
+    from backend.db import get_workspace_chat_messages
+    messages = get_workspace_chat_messages()
+    return jsonify({"messages": messages, "count": len(messages)}), 200
+
+@notes_bp.route("/api/workspace/chat", methods=["DELETE"])
+def clear_workspace_chat():
+    """Clears global workspace conversation history."""
+    from backend.db import clear_workspace_chat_messages
+    clear_workspace_chat_messages()
+    return jsonify({"message": "Workspace chat history cleared."}), 200
+

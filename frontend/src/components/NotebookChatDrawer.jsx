@@ -170,21 +170,132 @@ export default function NotebookChatDrawer({
     if (showToast) showToast('Copied to clipboard!', 'info');
   };
 
+  // Helper to parse inline Markdown (citations, bold, italic, code, math)
+  const renderInlineMarkdown = (text) => {
+    if (!text) return null;
+
+    // Matches: [Page X], **bold**, __bold__, `code`, *italic*, _italic_, $formula$
+    const tokenRegex = /(\[(?:Page|Pages)\s*[0-9,\s]+\]|\*\*[^*]+\*\*|__[^_]+__|`[^`]+`|\*[^*]+\*|_[^_]+_|\$[^$]+\$)/g;
+
+    const parts = [];
+    let lastIdx = 0;
+    let match;
+
+    while ((match = tokenRegex.exec(text)) !== null) {
+      if (match.index > lastIdx) {
+        parts.push(text.slice(lastIdx, match.index));
+      }
+
+      const token = match[0];
+
+      if (token.startsWith('[Page') || token.startsWith('[Pages') || token.startsWith('[page')) {
+        // Citation badge
+        const numMatch = token.match(/[0-9]+/g);
+        const nums = numMatch ? numMatch.map(n => parseInt(n, 10)).filter(n => !isNaN(n)) : [];
+        parts.push(
+          <span key={`cite-${match.index}`} style={{ display: 'inline-flex', gap: '4px', margin: '0 3px', verticalAlign: 'middle' }}>
+            {nums.map((pageNum, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => onJumpToPage && onJumpToPage(pageNum - 1)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.35) 0%, rgba(6, 182, 212, 0.35) 100%)',
+                  color: '#ffffff',
+                  border: '1px solid rgba(99, 102, 241, 0.6)',
+                  borderRadius: '6px',
+                  padding: '2px 8px',
+                  fontSize: '0.74rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.3)'
+                }}
+                title={`Click to jump to Page ${pageNum} in reader`}
+              >
+                <span>Page {pageNum}</span>
+                <ExternalLink size={10} />
+              </button>
+            ))}
+          </span>
+        );
+      } else if ((token.startsWith('**') && token.endsWith('**')) || (token.startsWith('__') && token.endsWith('__'))) {
+        // Bold
+        const inner = token.slice(2, -2);
+        parts.push(
+          <strong key={`b-${match.index}`} style={{ fontWeight: 700, color: '#ffffff' }}>
+            {inner}
+          </strong>
+        );
+      } else if (token.startsWith('`') && token.endsWith('`')) {
+        // Inline Code
+        const inner = token.slice(1, -1);
+        parts.push(
+          <code key={`c-${match.index}`} style={{
+            background: 'rgba(0, 0, 0, 0.45)',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            padding: '2px 6px',
+            borderRadius: '4px',
+            fontFamily: 'var(--font-mono)',
+            fontSize: '0.8rem',
+            color: '#38bdf8'
+          }}>
+            {inner}
+          </code>
+        );
+      } else if ((token.startsWith('*') && token.endsWith('*')) || (token.startsWith('_') && token.endsWith('_'))) {
+        // Italic
+        const inner = token.slice(1, -1);
+        parts.push(
+          <em key={`i-${match.index}`} style={{ fontStyle: 'italic', color: '#cbd5e1' }}>
+            {inner}
+          </em>
+        );
+      } else if (token.startsWith('$') && token.endsWith('$')) {
+        // Math formula
+        const inner = token.slice(1, -1);
+        parts.push(
+          <span key={`m-${match.index}`} style={{
+            fontFamily: 'Cambria Math, serif',
+            fontStyle: 'italic',
+            color: '#a5f3fc',
+            background: 'rgba(6, 182, 212, 0.1)',
+            padding: '1px 5px',
+            borderRadius: '4px'
+          }}>
+            {inner}
+          </span>
+        );
+      }
+
+      lastIdx = tokenRegex.lastIndex;
+    }
+
+    if (lastIdx < text.length) {
+      parts.push(text.slice(lastIdx));
+    }
+
+    return parts;
+  };
+
   // Helper to format text with Markdown, code blocks, and clickable [Page X] citation badges
   const renderFormattedMessage = (content, msgId) => {
     if (!content) return null;
 
     // Check for triple backtick code blocks
     const codeBlockRegex = /```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g;
-    const parts = [];
+    const blocks = [];
     let lastIndex = 0;
     let match;
 
     while ((match = codeBlockRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
-        parts.push({ type: 'text', text: content.slice(lastIndex, match.index) });
+        blocks.push({ type: 'text', text: content.slice(lastIndex, match.index) });
       }
-      parts.push({
+      blocks.push({
         type: 'code',
         language: match[1] || 'text',
         code: match[2].trim()
@@ -193,16 +304,16 @@ export default function NotebookChatDrawer({
     }
 
     if (lastIndex < content.length) {
-      parts.push({ type: 'text', text: content.slice(lastIndex) });
+      blocks.push({ type: 'text', text: content.slice(lastIndex) });
     }
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        {parts.map((part, pIdx) => {
-          if (part.type === 'code') {
+        {blocks.map((block, bIdx) => {
+          if (block.type === 'code') {
             return (
               <div 
-                key={`code-${pIdx}`} 
+                key={`code-${bIdx}`} 
                 style={{
                   background: '#040711',
                   border: '1px solid rgba(255, 255, 255, 0.12)',
@@ -223,9 +334,9 @@ export default function NotebookChatDrawer({
                   fontSize: '0.72rem',
                   fontFamily: 'var(--font-mono)'
                 }}>
-                  <span>{part.language || 'code'}</span>
+                  <span>{block.language || 'code'}</span>
                   <button
-                    onClick={() => handleCopy(`code-${msgId}-${pIdx}`, part.code)}
+                    onClick={() => handleCopy(`code-${msgId}-${bIdx}`, block.code)}
                     style={{
                       background: 'transparent',
                       border: 'none',
@@ -237,8 +348,8 @@ export default function NotebookChatDrawer({
                       fontSize: '0.72rem'
                     }}
                   >
-                    {copiedId === `code-${msgId}-${pIdx}` ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
-                    <span>{copiedId === `code-${msgId}-${pIdx}` ? 'Copied' : 'Copy'}</span>
+                    {copiedId === `code-${msgId}-${bIdx}` ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+                    <span>{copiedId === `code-${msgId}-${bIdx}` ? 'Copied' : 'Copy'}</span>
                   </button>
                 </div>
                 <pre style={{
@@ -249,106 +360,116 @@ export default function NotebookChatDrawer({
                   color: '#38bdf8',
                   lineHeight: '1.5'
                 }}>
-                  <code>{part.code}</code>
+                  <code>{block.code}</code>
                 </pre>
               </div>
             );
           }
 
-          // Process markdown lines (citations, bold, headings, bullets)
-          const lines = part.text.split('\n');
+          // Process markdown lines
+          const lines = block.text.split('\n');
           return (
-            <div key={`txt-${pIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              {lines.map((line, lIdx) => {
-                const trimmed = line.trim();
+            <div key={`txt-${bIdx}`} style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {lines.map((rawLine, lIdx) => {
+                const trimmed = rawLine.trim();
                 if (!trimmed) {
                   return <div key={lIdx} style={{ height: '4px' }} />;
                 }
 
-                // Process citations in line
-                const lineParts = [];
-                const citationRegex = /\[(?:Page|Pages)\s*([0-9,\s]+)\]/gi;
-                let lineLastIdx = 0;
-                let cMatch;
-
-                while ((cMatch = citationRegex.exec(line)) !== null) {
-                  if (cMatch.index > lineLastIdx) {
-                    lineParts.push(line.slice(lineLastIdx, cMatch.index));
-                  }
-
-                  const numStrings = cMatch[1].split(/[,\s]+/).filter(Boolean);
-                  const nums = numStrings.map(n => parseInt(n, 10)).filter(n => !isNaN(n));
-
-                  lineParts.push(
-                    <span key={`cite-${lIdx}-${cMatch.index}`} style={{ display: 'inline-flex', gap: '4px', margin: '0 3px', verticalAlign: 'middle' }}>
-                      {nums.map((pageNum, i) => (
-                        <button
-                          key={i}
-                          type="button"
-                          onClick={() => onJumpToPage && onJumpToPage(pageNum - 1)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.35) 0%, rgba(6, 182, 212, 0.35) 100%)',
-                            color: '#ffffff',
-                            border: '1px solid rgba(99, 102, 241, 0.6)',
-                            borderRadius: '6px',
-                            padding: '2px 8px',
-                            fontSize: '0.74rem',
-                            fontWeight: 700,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s ease',
-                            boxShadow: '0 1px 4px rgba(0,0,0,0.3)'
-                          }}
-                          title={`Click to jump to Page ${pageNum} in reader`}
-                        >
-                          <span>Page {pageNum}</span>
-                          <ExternalLink size={10} />
-                        </button>
-                      ))}
-                    </span>
+                // Horizontal rule
+                if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+                  return (
+                    <hr 
+                      key={lIdx} 
+                      style={{ 
+                        border: 'none', 
+                        borderTop: '1px solid rgba(255, 255, 255, 0.12)', 
+                        margin: '8px 0' 
+                      }} 
+                    />
                   );
-
-                  lineLastIdx = citationRegex.lastIndex;
                 }
 
-                if (lineLastIdx < line.length) {
-                  lineParts.push(line.slice(lineLastIdx));
-                }
-
-                // Render Headings
+                // Headings
                 if (trimmed.startsWith('# ')) {
-                  return <h3 key={lIdx} style={{ fontSize: '1.05rem', fontWeight: 800, color: '#ffffff', margin: '6px 0 2px 0' }}>{lineParts}</h3>;
+                  const cleanText = trimmed.slice(2).trim();
+                  return (
+                    <h3 key={lIdx} style={{ fontSize: '1.08rem', fontWeight: 800, color: '#ffffff', margin: '8px 0 3px 0' }}>
+                      {renderInlineMarkdown(cleanText)}
+                    </h3>
+                  );
                 }
-                if (trimmed.startsWith('## ') || trimmed.startsWith('### ')) {
-                  return <h4 key={lIdx} style={{ fontSize: '0.95rem', fontWeight: 700, color: '#c7d2fe', margin: '4px 0 2px 0' }}>{lineParts}</h4>;
+                if (trimmed.startsWith('## ')) {
+                  const cleanText = trimmed.slice(3).trim();
+                  return (
+                    <h4 key={lIdx} style={{ fontSize: '0.98rem', fontWeight: 700, color: '#c7d2fe', margin: '6px 0 2px 0' }}>
+                      {renderInlineMarkdown(cleanText)}
+                    </h4>
+                  );
                 }
-                // Render Bullets
-                if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
+                if (trimmed.startsWith('### ')) {
+                  const cleanText = trimmed.slice(4).trim();
+                  return (
+                    <h5 key={lIdx} style={{ fontSize: '0.92rem', fontWeight: 700, color: '#93c5fd', margin: '5px 0 2px 0' }}>
+                      {renderInlineMarkdown(cleanText)}
+                    </h5>
+                  );
+                }
+
+                // Bullet points (*, -, +, •)
+                const bulletMatch = trimmed.match(/^[*+\-•]\s+(.*)$/);
+                if (bulletMatch) {
+                  const cleanText = bulletMatch[1];
                   return (
                     <div key={lIdx} style={{ display: 'flex', gap: '8px', paddingLeft: '6px', margin: '2px 0' }}>
-                      <span style={{ color: '#818cf8', fontWeight: 800, fontSize: '0.9rem' }}>&bull;</span>
-                      <span style={{ flex: 1 }}>{lineParts}</span>
+                      <span style={{ color: '#818cf8', fontWeight: 800, fontSize: '0.9rem', lineHeight: '1.5' }}>&bull;</span>
+                      <span style={{ flex: 1, lineHeight: '1.65' }}>
+                        {renderInlineMarkdown(cleanText)}
+                      </span>
                     </div>
                   );
                 }
-                // Render Blockquotes
+
+                // Numbered lists (1. 2. 3.)
+                const numberMatch = trimmed.match(/^(\d+)\.\s+(.*)$/);
+                if (numberMatch) {
+                  const num = numberMatch[1];
+                  const cleanText = numberMatch[2];
+                  return (
+                    <div key={lIdx} style={{ display: 'flex', gap: '8px', paddingLeft: '6px', margin: '2px 0' }}>
+                      <span style={{ color: '#818cf8', fontWeight: 700, fontSize: '0.84rem', minWidth: '18px' }}>{num}.</span>
+                      <span style={{ flex: 1, lineHeight: '1.65' }}>
+                        {renderInlineMarkdown(cleanText)}
+                      </span>
+                    </div>
+                  );
+                }
+
+                // Blockquotes (> text)
                 if (trimmed.startsWith('> ')) {
+                  const cleanText = trimmed.slice(2).trim();
                   return (
                     <div key={lIdx} style={{
                       borderLeft: '3px solid #818cf8',
-                      paddingLeft: '10px',
+                      background: 'rgba(99, 102, 241, 0.08)',
+                      borderRadius: '0 6px 6px 0',
+                      padding: '6px 12px',
                       color: '#cbd5e1',
                       margin: '4px 0',
-                      fontStyle: 'italic'
+                      fontStyle: 'italic',
+                      lineHeight: '1.6'
                     }}>
-                      {lineParts}
+                      {renderInlineMarkdown(cleanText)}
                     </div>
                   );
                 }
 
-                return <p key={lIdx} style={{ margin: '2px 0', lineHeight: '1.65' }}>{lineParts}</p>;
+                // Standard paragraph
+                return (
+                  <p key={lIdx} style={{ margin: '2px 0', lineHeight: '1.65' }}>
+                    {renderInlineMarkdown(trimmed)}
+                  </p>
+                );
               })}
             </div>
           );

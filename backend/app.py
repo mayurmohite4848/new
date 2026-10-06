@@ -4,6 +4,27 @@ import sys
 # Ensure parent directory is in sys.path when running app directly
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Auto-load .env file if present
+def load_env_file():
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    env_paths = [
+        os.path.join(base_dir, ".env"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    ]
+    for p in env_paths:
+        if os.path.exists(p):
+            with open(p, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip('"').strip("'")
+                        if k and not os.environ.get(k):
+                            os.environ[k] = v
+
+load_env_file()
+
 from flask import Flask, send_from_directory, jsonify
 from flask_cors import CORS
 from backend.db import init_db

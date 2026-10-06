@@ -68,7 +68,7 @@ export default function Navbar({
   return (
     <header style={{
       borderBottom: '1px solid var(--border-subtle)',
-      background: 'rgba(10, 15, 29, 0.85)',
+      background: 'rgba(10, 15, 29, 0.92)',
       backdropFilter: 'blur(16px)',
       position: 'sticky',
       top: 0,
@@ -83,9 +83,7 @@ export default function Navbar({
         alignItems: 'center',
         justifyContent: 'space-between',
         height: '66px',
-        flexWrap: 'nowrap',
-        gap: '12px',
-        overflowX: 'auto'
+        gap: '12px'
       }}>
         {/* Brand & Tab Navigation */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
@@ -176,7 +174,7 @@ export default function Navbar({
           )}
         </div>
 
-        {/* Actions */}
+        {/* Actions Toolbar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
           {onOpenGlobalChat && (
             <button
@@ -190,13 +188,13 @@ export default function Navbar({
                 color: '#e0e7ff',
                 boxShadow: '0 0 12px rgba(99, 102, 241, 0.15)',
                 fontWeight: 700,
-                padding: '6px 12px',
+                padding: '6px 11px',
                 whiteSpace: 'nowrap',
-                gap: '6px'
+                gap: '5px'
               }}
             >
               <Globe size={14} color="#67e8f9" />
-              <span>Global AI Hub</span>
+              <span>AI Hub</span>
               <kbd style={{
                 background: 'rgba(0, 0, 0, 0.4)',
                 border: '1px solid rgba(255, 255, 255, 0.15)',
@@ -212,41 +210,12 @@ export default function Navbar({
             </button>
           )}
 
-          {onRefresh && (
-            <button
-              className="btn btn-ghost btn-icon"
-              onClick={onRefresh}
-              title="Refresh from SQLite"
-              disabled={refreshing}
-            >
-              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
-            </button>
-          )}
-
-          <button 
-            className="btn btn-secondary btn-sm"
-            onClick={() => {
-              setVerifyResult(null);
-              setShowKeyModal(true);
-            }}
-            style={{
-              borderColor: hasKey ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)',
-              whiteSpace: 'nowrap',
-              padding: '6px 11px',
-              fontSize: '0.8rem'
-            }}
-            title={hasKey ? 'Google Gemini API key is active' : 'Configure Gemini API Key'}
-          >
-            <Key size={13} color={hasKey ? '#34d399' : 'currentColor'} />
-            <span>{hasKey ? 'Gemini Active' : 'Gemini Key'}</span>
-          </button>
-
           {onOpenTelemetry && (
             <button
               id="btn-llmops-telemetry"
               className="btn btn-secondary btn-sm"
               onClick={onOpenTelemetry}
-              title="LLMOps Telemetry, Latency Profiler & Fallback Health Monitor"
+              title="LLMOps Telemetry & Hybrid Fallback Engine"
               style={{
                 background: 'rgba(16, 185, 129, 0.12)',
                 border: '1px solid rgba(16, 185, 129, 0.35)',
@@ -260,6 +229,36 @@ export default function Navbar({
             >
               <Activity size={13} color="#34d399" />
               <span>Telemetry</span>
+            </button>
+          )}
+
+          <button 
+            className="btn btn-secondary btn-sm"
+            onClick={() => {
+              setVerifyResult(null);
+              setShowKeyModal(true);
+            }}
+            style={{
+              borderColor: hasKey ? 'rgba(16, 185, 129, 0.4)' : 'var(--border-subtle)',
+              whiteSpace: 'nowrap',
+              padding: '6px 10px',
+              fontSize: '0.8rem',
+              gap: '5px'
+            }}
+            title={hasKey ? 'Google Gemini API key is active' : 'Configure Gemini API Key'}
+          >
+            <Key size={13} color={hasKey ? '#34d399' : 'currentColor'} />
+            <span>{hasKey ? 'Key Active' : 'API Key'}</span>
+          </button>
+
+          {onRefresh && (
+            <button
+              className="btn btn-ghost btn-icon"
+              onClick={onRefresh}
+              title="Refresh from SQLite"
+              disabled={refreshing}
+            >
+              <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
             </button>
           )}
 
